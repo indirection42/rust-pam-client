@@ -18,12 +18,12 @@
  * # Features
  * * Authentication, account validation, session management
  * * [Password changing][`Context::chauthtok`]
+ * * Three sample conversation handler implementations
  * * [Custom conversation handlers][`ConversationHandler`]
  * * [On-the-fly switching of the conversation handler][`Context::replace_conversation`]
  * * [Suspendable RAII session handling][`Session::leak`]
  * * [Refreshing][`Session::refresh_credentials`] and
  *   [reinitialization][`Context::reinitialize_credentials`] of credentials.
- * * Three sample conversation handler implementations
  * * [PAM environment list][`Session::envlist()`] support with easy integration
  *   to [`std::process::Command`] and `nix::unistd::execve`
  * * Getters and setters for all standard and most Linux-specific PAM items.
@@ -56,9 +56,9 @@
  * // Validate the account (is not locked, expired, etc.)
  * context.acct_mgmt(Flag::NONE).expect("Account validation failed");
  *
- * // Get resulting username and map to a userid
+ * // Get resulting user name and map to a user id
  * let username = context.user();
- * let uid = 65535; // Left as an exercise to the reader.
+ * let uid = 65535; // Left as an exercise to the reader
  *
  * // Open session and initialize credentials
  * let mut session = context.open_session(Flag::NONE).expect("Session opening failed");
@@ -141,6 +141,7 @@ pub use pam_sys::types::PamReturnCode as ReturnCode;
 pub use pam_sys::types::PamFlag as Flag;
 
 /// Type alias for the result of most PAM methods.
+#[doc(alias = "PamResult")]
 pub type Result<T> = std::result::Result<T, Error>;
 /// Type alias for the result of PAM methods that pass back a consumed struct
 /// on error.

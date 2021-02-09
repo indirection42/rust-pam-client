@@ -64,9 +64,12 @@ struct XAuthData {
 	pub data: *const c_char,
 }
 
-/// PAM context for client applications
+/// Main struct for PAM interaction
+///
+/// Manages a PAM context holding the transaction state.
 ///
 /// See the [crate documentation][`crate`] for examples.
+#[doc(alias = "PamContext")]
 pub struct Context<ConvT> where ConvT: ConversationHandler {
 	handle: Cell<*mut PamHandle>,
 	// Needs to be boxed, as we give a long-living pointer to it to C code.

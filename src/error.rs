@@ -58,7 +58,7 @@ impl<T> Debug for DisplayHelper<T> {
 	}
 }
 
-/// Base error type for PAM operations (possibly with a payload).
+/// Base error type for PAM operations (possibly with a payload)
 ///
 /// Errors originate from the PAM library, PAM modules or helper structs
 /// in this crate. Currently no custom instances are supported.
@@ -158,6 +158,7 @@ impl<T> Debug for ErrorWith<T> {
 /// Error type for PAM operations without error payload.
 ///
 /// This variant never contains a payload.
+#[doc(alias = "PamError")]
 pub type Error = ErrorWith<NoPayload>;
 
 impl Error {

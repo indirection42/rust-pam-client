@@ -17,6 +17,7 @@ pub enum SessionToken {
 }
 
 /// An active PAM session or pseudo session
+#[doc(alias = "PamSession")]
 #[must_use]
 pub struct Session<'a, ConvT> where ConvT: ConversationHandler {
 	context: &'a mut Context<ConvT>,
