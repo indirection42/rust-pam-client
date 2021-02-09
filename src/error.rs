@@ -62,6 +62,7 @@ impl<T> Debug for DisplayHelper<T> {
 ///
 /// Errors originate from the PAM library, PAM modules or helper structs
 /// in this crate. Currently no custom instances are supported.
+#[must_use]
 #[derive(Clone)]
 pub struct ErrorWith<T> {
 	code: ReturnCode,
@@ -185,7 +186,6 @@ impl Error {
 
 	/// Converts the error message into a [`ErrorWith<T>`] instance without
 	/// a payload.
-	#[must_use]
 	pub fn into<T>(self) -> ErrorWith<T> {
 		ErrorWith::<T> {
 			code: self.code,
