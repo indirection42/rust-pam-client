@@ -15,6 +15,21 @@
  * platforms like NetBSD. Solaris should also be supported, but the support
  * is untested.
  *
+ * # Features
+ * * Authentication, account validation, session management
+ * * [Password changing][`Context::chauthtok`]
+ * * [Custom conversation handlers][`ConversationHandler`]
+ * * [On-the-fly switching of the conversation handler][`Context::replace_conversation`]
+ * * [Suspendable RAII session handling][`Session::leak`]
+ * * [Refreshing][`Session::refresh_credentials`] and
+ *   [reinitialization][`Context::reinitialize_credentials`] of credentials.
+ * * Three sample conversation handler implementations
+ * * [PAM environment list][`Session::envlist()`] support with easy integration
+ *   to [`std::process::Command`] and `nix::unistd::execve`
+ * * Getters and setters for all standard and most Linux-specific PAM items.
+ * * Raw access methods for non-standard PAM items
+ * * Most errors are convertible to [`std::io::Error`]
+ *
  * # Examples
  *
  * Sample workflow for command line interaction like `su -c`, running a
@@ -22,7 +37,7 @@
  *
  * ```no_run
  * use pam_client::{Context, Flag};
- * use pam_client::conv_cli::Conversation; // Implementation for CLIs
+ * use pam_client::conv_cli::Conversation; // CLI implementation
  * use std::process::Command;
  * use std::os::unix::process::CommandExt;
  *
@@ -32,7 +47,7 @@
  *    Conversation::new() // Handler for user interaction
  * ).expect("Failed to initialize PAM context");
  *
- * // Optionally set some optional settings
+ * // Optionally set some settings
  * context.set_user_prompt(Some("Who art thou? "));
  *
  * // Authenticate the user (ask for password, 2nd-factor token, fingerprint, etc.)

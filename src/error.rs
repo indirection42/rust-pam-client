@@ -173,7 +173,7 @@ impl Error {
 		}
 	}
 
-	/// Replaces the payload of the error message and returns a corresponding
+	/// Adds the payload to the error message and returns a corresponding
 	/// [`ErrorWith<T>`] instance.
 	pub fn into_with_payload<T>(self, payload: T) -> ErrorWith<T> {
 		ErrorWith::<T> {
