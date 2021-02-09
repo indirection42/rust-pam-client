@@ -125,11 +125,11 @@ mod conversation;
 mod error;
 mod ffi;
 mod session;
+mod resp_buf;
 pub mod conv_cli;
 pub mod conv_mock;
 pub mod conv_null;
 pub mod env_list;
-pub mod resp_buf;
 
 pub use context::Context;
 pub use conversation::ConversationHandler;
