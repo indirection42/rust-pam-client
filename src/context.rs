@@ -513,11 +513,19 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler + Default {
 	///
 	/// See [`replace_conversation()`][`Self::replace_conversation()`].
 	pub fn replace_conversation_boxed<T: ConversationHandler>(mut self, mut new_handler: Box<T>) -> ExtResult<(Context<T>, Box<ConvT>), (Self, Box<T>)> {
+		// Get current username for handler initialization
+		let username = match self.user() {
+			Ok(u) => u,
+			Err(e) => return Err(e.into_with_payload((self, new_handler)))
+		};
 		// Create callback struct for C code
 		let pam_conv = to_pam_conv(&mut new_handler);
 		if let Err(e) = unsafe { self.set_item(PamItemType::CONV, &pam_conv as *const PamConversation as *const c_void) } {
 			Err(e.into_with_payload((self, new_handler)))
 		} else {
+			// Initialize handler
+			new_handler.init(username);
+			// Create new context and return it
 			Ok((
 				Context::<T> {
 					handle: Cell::new(self.handle.replace(ptr::null_mut())),

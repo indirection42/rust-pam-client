@@ -8,9 +8,17 @@ use std::result::Result;
 /// Implement this for custom behaviour when a PAM module asks for usernames,
 /// passwords, etc. or wants to show a message to the user
 pub trait ConversationHandler {
-	/// Called by [`Context`][`crate::Context`] after taking ownership of the
-	/// handler and before any other callback is called.
-	fn init(&mut self, _default_user: Option<&str>) {}
+	/// Called by [`Context`][`crate::Context`] directly after taking ownership
+	/// of the handler.
+	///
+	/// May be called multiple times if
+	/// [`Context::replace_conversation()`][`crate::Context::replace_conversation`]
+	/// is used. In this case it is called each time a context takes ownership
+	/// and passed the current target username of that context (if any) as the
+	/// argument.
+	///
+	/// The default implementation does nothing.
+	fn init(&mut self, _default_user: Option<impl AsRef<str>>) {}
 
 	/// Obtains a string whilst echoing text (e.g. username)
 	///
