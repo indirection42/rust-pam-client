@@ -536,3 +536,8 @@ impl<ConvT> Drop for Context<ConvT> where ConvT: ConversationHandler {
 		end(self.handle(), self.last_status.get());
 	}
 }
+
+// `Send` should be possible, as long as `ConvT` is `Send` too, as all memory
+// access is bound to an unique instance of `Context` (no copy/clone) and we
+// keep interior mutability bound to having a reference to the instance.
+unsafe impl<ConvT> Send for Context<ConvT> where ConvT: ConversationHandler + Send {}
