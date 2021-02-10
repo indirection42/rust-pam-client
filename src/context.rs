@@ -549,3 +549,49 @@ impl<ConvT> Drop for Context<ConvT> where ConvT: ConversationHandler {
 // access is bound to an unique instance of `Context` (no copy/clone) and we
 // keep interior mutability bound to having a reference to the instance.
 unsafe impl<ConvT> Send for Context<ConvT> where ConvT: ConversationHandler + Send {}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_basic() {
+		let mut context = Context::new(
+			"test",
+			Some("user"),
+			crate::conv_null::Conversation::new()
+		).unwrap();
+		// Check if user name and service name are correctly saved
+		assert_eq!(context.service().unwrap().unwrap(), "test");
+		assert_eq!(context.user().unwrap().unwrap(), "user");
+		// Check setting/getting of string items.
+		context.set_ruser(Some("nobody")).unwrap();
+		assert_eq!(context.ruser().unwrap().unwrap(), "nobody");
+		// Check environment setting/getting
+		context.putenv("TEST=1").unwrap();
+		assert_eq!(context.getenv("TEST").unwrap(), "1");
+		let env = context.envlist();
+		assert!(env.len() > 0);
+		for (key, value) in env.iter_tuples() {
+			if key.to_string_lossy() == "TEST" {
+				assert_eq!(value.to_string_lossy(), "1");
+			}
+		}
+		drop(context)
+	}
+
+	#[test]
+	fn test_conv_replace() {
+		let mut context = Context::new(
+			"test",
+			Some("user"),
+			crate::conv_null::Conversation::new()
+		).unwrap();
+		// Set username
+		context.set_user(Some("anybody"));
+		// Replace conversation handler
+		let (mut context, _) = context.replace_conversation(crate::conv_mock::Conversation::new()).unwrap();
+		// Check if set username was propagated to the new handler
+		assert_eq!(context.conversation().username, "anybody");
+	}
+}
