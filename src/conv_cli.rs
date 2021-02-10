@@ -1,4 +1,9 @@
-//! Interactive command line conversation handler
+/*!
+ * Interactive command line conversation handler
+ *
+ * *This module is unavailable if pam-client is built without the `"cli"` feature.*
+ */
+
 
 use std::io::{self, Write, BufRead};
 use std::ffi::{CStr, CString};
@@ -16,6 +21,8 @@ fn trim_newline(s: &mut String) {
 }
 
 /// Command-line implementation of `ConversationHandler`
+///
+/// *This struct is unavailable if pam-client is built without the `"cli"` feature.*
 ///
 /// Prompts, info and error messages will be written to STDERR, non-secret
 /// input in read from STDIN and [rpassword][`rpassword::read_password_from_tty`]
