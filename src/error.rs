@@ -107,6 +107,7 @@ impl<T> ErrorWith<T> {
 	}
 
 	/// Returns a reference to an optional payload.
+	#[rustversion::attr(since(1.48), const)]
 	pub fn payload(&self) -> Option<&T> {
 		self.payload.as_ref()
 	}
@@ -167,7 +168,6 @@ impl<T> Debug for ErrorWith<T> {
 /// Error type for PAM operations without error payload.
 ///
 /// This variant never contains a payload.
-#[doc(alias = "PamError")]
 pub type Error = ErrorWith<NoPayload>;
 
 impl Error {

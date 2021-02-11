@@ -26,7 +26,6 @@ pub enum SessionToken {
 }
 
 /// An active PAM session or pseudo session
-#[doc(alias = "PamSession")]
 #[must_use]
 pub struct Session<'a, ConvT> where ConvT: ConversationHandler {
 	context: &'a mut Context<ConvT>,
@@ -97,6 +96,7 @@ impl<'a, ConvT> Session<'a, ConvT> where ConvT: ConversationHandler {
 	/// Returns the value of a PAM environment variable.
 	///
 	/// See [`Context::getenv()`].
+	#[rustversion::attr(since(1.48), doc(alias = "pam_getenv"))]
 	pub fn getenv<'b>(&'b self, name: &str) -> Option<&'b str> {
 		self.context.getenv(name)
 	}
@@ -104,6 +104,7 @@ impl<'a, ConvT> Session<'a, ConvT> where ConvT: ConversationHandler {
 	/// Sets or unsets a PAM environment variable.
 	///
 	/// See [`Context::putenv()`].
+	#[rustversion::attr(since(1.48), doc(alias = "pam_putenv"))]
 	pub fn putenv(&mut self, name_value: &str) -> Result<()> {
 		self.context.putenv(name_value)
 	}
@@ -111,6 +112,7 @@ impl<'a, ConvT> Session<'a, ConvT> where ConvT: ConversationHandler {
 	/// Returns a copy of the PAM environment in this context.
 	///
 	/// See [`Context::envlist()`].
+	#[rustversion::attr(since(1.48), doc(alias = "pam_getenvlist"))]
 	pub fn envlist(&self) -> EnvList {
 		self.context.envlist()
 	}
@@ -137,6 +139,7 @@ impl<'a, ConvT> Session<'a, ConvT> where ConvT: ConversationHandler {
 	///
 	/// The ownership of `self` is passed back in the error payload.
 	/// On drop the session will once again try to close itself.
+	#[rustversion::attr(since(1.48), doc(alias = "pam_close_session"))]
 	pub fn close(mut self, flags: Flag) -> ExtResult<(), Self> {
 		if self.session_active {
 			let status = close_session(self.context.handle(), flags);

@@ -150,7 +150,6 @@ pub use pam_sys::types::PamReturnCode as ReturnCode;
 pub use pam_sys::types::PamFlag as Flag;
 
 /// Type alias for the result of most PAM methods.
-#[doc(alias = "PamResult")]
 pub type Result<T> = std::result::Result<T, Error>;
 /// Type alias for the result of PAM methods that pass back a consumed struct
 /// on error.

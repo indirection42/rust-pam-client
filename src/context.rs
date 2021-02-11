@@ -78,7 +78,6 @@ struct XAuthData {
 /// Manages a PAM context holding the transaction state.
 ///
 /// See the [crate documentation][`crate`] for examples.
-#[doc(alias = "PamContext")]
 pub struct Context<ConvT> where ConvT: ConversationHandler {
 	handle: Cell<*mut PamHandle>,
 	// Needs to be boxed, as we give a long-living pointer to it to C code.
@@ -108,6 +107,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// - `ReturnCode::ABORT` – General failure
 	/// - `ReturnCode::BUF_ERR` – Memory allocation failure
 	/// - `ReturnCode::SYSTEM_ERR` – Other system error
+	#[rustversion::attr(since(1.48), doc(alias = "pam_start"))]
 	pub fn new(service: &str, username: Option<&str>, conversation: ConvT) -> Result<Self> {
 		// Wrap `conversation` in a box and delegate to `from_boxed_conv`
 		Self::from_boxed_conv(service, username, Box::new(conversation))
@@ -185,6 +185,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// - `BAD_ITEM` – Unsupported, undefined or inaccessible item
 	/// - `BUF_ERR` – Memory buffer error
 	/// - `PERM_DENIED` – The value was NULL
+	#[rustversion::attr(since(1.48), doc(alias = "pam_get_item"))]
 	pub fn get_item(&self, item_type: PamItemType) -> Result<*const c_void> {
 		let mut result: *const c_void = ptr::null();
 		self.wrap_pam_return(get_item(self.handle(), item_type, &mut result))?;
@@ -207,6 +208,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// `value` matches the type the PAM library expects. E.g. a null terminated
 	/// `*const c_char` for [`PamItemType::SERVICE`] or `*const PamXAuthData` for
 	/// [`PamItemType::XAUTHDATA`].
+	#[rustversion::attr(since(1.48), doc(alias = "pam_set_item"))]
 	pub unsafe fn set_item(&mut self, item_type: PamItemType, value: *const c_void) -> Result<()> {
 		self.wrap_pam_return(set_item(self.handle(), item_type, &*value))
 	}
@@ -239,12 +241,12 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 		}
 
 		#[allow(clippy::cast_sign_loss)]
-		return Ok(Some((
+		Ok(Some((
 			CStr::from_bytes_with_nul(
 				unsafe { slice::from_raw_parts(data.name as *const u8, data.namelen as usize + 1) }
 			).map_err(|_| Error::new(self.handle(), ReturnCode::BUF_ERR))?,
 			unsafe { slice::from_raw_parts(data.data as *const u8, data.datalen as usize) }
-		)));
+		)))
 	}
 
 	/// Sets X authentication data (Linux specific).
@@ -280,6 +282,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	///
 	/// Searches the environment list in this PAM context for an
 	/// item with key `name` and returns the value, if it exists.
+	#[rustversion::attr(since(1.48), doc(alias = "pam_getenv"))]
 	pub fn getenv<'a>(&'a self, name: &str) -> Option<&'a str> {
 		getenv(self.handle(), name)
 	}
@@ -293,6 +296,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// - *NAME*= – Set a variable to the empty value. If it was already set
 	///   it is overwritten.
 	/// - *NAME* – Delete a variable, if it exists.
+	#[rustversion::attr(since(1.48), doc(alias = "pam_putenv"))]
 	pub fn putenv(&mut self, name_value: &str) -> Result<()> {
 		self.wrap_pam_return(putenv(self.handle(), name_value))
 	}
@@ -306,6 +310,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// The returned [`EnvList`] type is designed to ease handing the
 	/// environment to [`std::process::Command::envs()`] and
 	/// `nix::unistd::execve`.
+	#[rustversion::attr(since(1.48), doc(alias = "pam_getenvlist"))]
 	pub fn envlist(&self) -> EnvList {
 		unsafe { EnvList::new(getenvlist(self.handle()) as *mut *mut c_char) }
 	}
@@ -335,6 +340,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// - `USER_UNKNOWN` – User not known.
 	/// - `INCOMPLETE` – The conversation handler returned `CONV_AGAIN`. Call
 	///   again after the asynchronous conversation finished.
+	#[rustversion::attr(since(1.48), doc(alias = "pam_authenticate"))]
 	pub fn authenticate(&mut self, flags: Flag) -> Result<()> {
 		self.wrap_pam_return(authenticate(self.handle(), flags))
 	}
@@ -359,6 +365,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// - `USER_UNKNOWN` – User not known
 	/// - `INCOMPLETE` – The conversation handler returned `CONV_AGAIN`. Call
 	///   again after the asynchronous conversation finished.
+	#[rustversion::attr(since(1.48), doc(alias = "pam_acct_mgmt"))]
 	pub fn acct_mgmt(&mut self, flags: Flag) -> Result<()> {
 		self.wrap_pam_return(acct_mgmt(self.handle(), flags))
 	}
@@ -406,6 +413,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// - `USER_UNKNOWN` – User not known
 	/// - `INCOMPLETE` – The conversation handler returned `CONV_AGAIN`. Call
 	///   again after the asynchronous conversation finished.
+	#[rustversion::attr(since(1.48), doc(alias = "pam_chauthtok"))]
 	pub fn chauthtok(&mut self, flags: Flag) -> Result<()> {
 		self.wrap_pam_return(chauthtok(self.handle(), flags))
 	}
@@ -440,6 +448,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	///
 	/// [authenticated]: authenticate()
 	/// [authorized]: acct_mgmt()
+	#[rustversion::attr(since(1.48), doc(alias = "pam_open_session"))]
 	pub fn open_session(&mut self, flags: Flag) -> Result<Session<ConvT>> {
 		self.wrap_pam_return(setcred(self.handle(), Flag::ESTABLISH_CRED/*|flags*/))?;
 
@@ -549,6 +558,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler + Default {
 
 /// Destructor ending the PAM transaction and releasing the PAM context
 impl<ConvT> Drop for Context<ConvT> where ConvT: ConversationHandler {
+	#[rustversion::attr(since(1.48), doc(alias = "pam_end"))]
 	fn drop(&mut self) {
 		end(self.handle(), self.last_status.get());
 	}

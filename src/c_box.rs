@@ -184,6 +184,7 @@ impl<T> CBox<T> where T: ?Sized {
 	/// The memory may be released with [`libc::free()`], but then no
 	/// destructors will be called. Use [`CBox::from_raw()`] instead to put
 	/// the cleanup responsibility back to `CBox`.
+	#[rustversion::attr(since(1.46), const)]
 	pub fn into_raw(b: CBox<T>) -> *mut T {
 		let ptr: NonNull<T> = b.0;
 		mem::forget(b);
@@ -201,6 +202,7 @@ impl<T> CBox<[T]> {
 	/// The memory may be released with [`libc::free()`], but then no
 	/// destructors will be called. Use [`CBox::from_raw_slice()`] instead
 	/// to put the cleanup responsibility back to `CBox`.
+	#[rustversion::attr(since(1.46), const)]
 	pub fn into_raw_unsized(b: CBox<[T]>) -> *mut T {
 		let ptr: NonNull<[T]> = b.0;
 		mem::forget(b);
