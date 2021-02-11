@@ -10,7 +10,7 @@ pam-client = "0.1.0"
 
 2. Read the crate documentation
 
-# Functionality
+## Functionality
 
 The `pam-client` crate a safe API to the application-faced parts of PAM.
 This includes in detail:
