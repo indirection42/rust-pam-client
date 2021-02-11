@@ -1,5 +1,15 @@
 //! Null conversation handler
 
+/***********************************************************************
+ * Author: Christoph Grenz <christophg+gitorious @ grenz-bonn.de>      *
+ *                                                                     *
+ * Due to the lack of originality the Null conversation handler        *
+ * implementation is given to the public domain. To the extent         *
+ * possible under law, the author has waived all copyright and related *
+ * or neighboring rights to this Source Code Form.                     *
+ * https://creativecommons.org/publicdomain/zero/1.0/legalcode         *
+ ***********************************************************************/
+
 use std::ffi::{CStr, CString};
 use crate::error::ReturnCode;
 use super::ConversationHandler;

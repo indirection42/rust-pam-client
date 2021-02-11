@@ -1,4 +1,13 @@
 //! PAM context and related helpers
+
+/***********************************************************************
+ * (c) 2021 Christoph Grenz <christophg+gitorious @ grenz-bonn.de>     *
+ *                                                                     *
+ * This Source Code Form is subject to the terms of the Mozilla Public *
+ * License, v. 2.0. If a copy of the MPL was not distributed with this *
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.            *
+ ***********************************************************************/
+
 use crate::ConversationHandler;
 use crate::ffi::to_pam_conv;
 use crate::error::{ReturnCode, Error};

@@ -1,5 +1,13 @@
 //! Functions interfacing with the conversation callback from C code
 
+/***********************************************************************
+ * (c) 2021 Christoph Grenz <christophg+gitorious @ grenz-bonn.de>     *
+ *                                                                     *
+ * This Source Code Form is subject to the terms of the Mozilla Public *
+ * License, v. 2.0. If a copy of the MPL was not distributed with this *
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.            *
+ ***********************************************************************/
+
 use super::ConversationHandler;
 use super::resp_buf::{ResponseBuffer};
 use crate::error::ReturnCode;
