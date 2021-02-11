@@ -16,6 +16,7 @@ use std::result::Result;
 ///
 /// Implement this for custom behaviour when a PAM module asks for usernames,
 /// passwords, etc. or wants to show a message to the user
+#[rustversion::attr(since(1.48), doc(alias = "pam_conv"))]
 pub trait ConversationHandler {
 	/// Called by [`Context`][`crate::Context`] directly after taking ownership
 	/// of the handler.

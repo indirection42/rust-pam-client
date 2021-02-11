@@ -55,7 +55,7 @@ impl Conversation {
 	/// string, it will be automatically set to the `Context`s default
 	/// username on context initialization.
 	#[must_use]
-	pub fn new() -> Self {
+	pub const fn new() -> Self {
 		Self {
 			username: String::new(),
 			password: String::new(),
