@@ -135,6 +135,7 @@ mod error;
 mod ffi;
 mod session;
 mod resp_buf;
+#[cfg(feature="cli")]
 pub mod conv_cli;
 pub mod conv_mock;
 pub mod conv_null;
