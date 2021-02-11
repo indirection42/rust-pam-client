@@ -31,7 +31,8 @@ pub(crate) fn to_pam_conv<T: ConversationHandler>(callback: &mut Box<T>) -> PamC
 ///
 /// Might get more complex in case we change the function signatures in the
 /// future.
-fn map_conv_string(input: CString) -> Option<CString> {
+#[allow(clippy::unnecessary_wraps)]
+const fn map_conv_string(input: CString) -> Option<CString> {
 	Some(input)
 }
 
