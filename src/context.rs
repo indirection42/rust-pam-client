@@ -607,9 +607,9 @@ mod tests {
 			crate::conv_null::Conversation::new()
 		).unwrap();
 		// Set username
-		context.set_user(Some("anybody"));
+		context.set_user(Some("anybody")).unwrap();
 		// Replace conversation handler
-		let (mut context, _) = context.replace_conversation(crate::conv_mock::Conversation::new()).unwrap();
+		let (context, _) = context.replace_conversation(crate::conv_mock::Conversation::new()).unwrap();
 		// Check if set username was propagated to the new handler
 		assert_eq!(context.conversation().username, "anybody");
 	}
