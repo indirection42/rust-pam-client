@@ -39,7 +39,7 @@ impl EnvItem {
 	#[must_use]
 	pub fn key_value(&self) -> (&OsStr, &OsStr) {
 		let element = <&CStr>::from(self).to_bytes();
-		let sep = element.iter().position(|b| *b == b'=').unwrap_or(element.len());
+		let sep = element.iter().position(|b| *b == b'=').unwrap_or_else(|| element.len());
 		(
 			OsStr::from_bytes(&element[..sep]),
 			OsStr::from_bytes(&element[sep+1..]),

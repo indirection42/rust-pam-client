@@ -19,6 +19,7 @@ use libc::{c_int, c_void};
 use pam_sys::types::{PamResponse, PamConversation, PamMessage, PamMessageStyle as MessageStyle};
 
 /// Wraps `callback` along with [`pam_converse<T>`] for handing to libpam.
+#[allow(clippy::borrowed_box)]
 pub(crate) fn to_pam_conv<T: ConversationHandler>(callback: &mut Box<T>) -> PamConversation {
 	PamConversation {
 		conv: Some(pam_converse::<T>),
