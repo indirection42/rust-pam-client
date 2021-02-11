@@ -1,0 +1,45 @@
+stages:
+  - build
+  - test
+
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - .cargo/
+    - .rustup/
+  policy: pull-push
+
+default:
+  before_script:
+    - |
+      if [ -e .cargo/bin/rustup ];
+      then .cargo/bin/rustup update;
+      else curl https://sh.rustup.rs -sSf | HOME="$CI_PROJECT_DIR" sh -s -- -q -y --no-modify-path --default-toolchain stable;
+      fi
+    - source .cargo/env
+
+build-debug:
+  stage: build
+  script:
+    - cargo build --workspace --all-features --color=always
+  artifacts:
+    paths:
+      - target/debug/
+    expire_in: 1 week
+
+build-doc:
+  stage: build
+  script:
+    - cargo doc --workspace --all-features --color=always
+  artifacts:
+    paths:
+      - target/doc/
+    expire_in: 1 week
+
+test-job:
+  stage: test
+  dependencies:
+    - build-debug
+  script:
+    - cargo check --workspace --all-features --color=always
+    - cargo test --workspace --all-features --color=always
