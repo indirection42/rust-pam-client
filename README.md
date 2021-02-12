@@ -14,7 +14,7 @@
 pam-client = "0.1.2"
 ```
 
-2. Read the crate documentation
+2. Read the [crate documentation](https://docs.rs/pam-client/)
 
 ## Functionality
 
