@@ -1,6 +1,7 @@
 stages:
   - build
   - test
+  - deploy
 
 cache:
   key: ${CI_COMMIT_REF_SLUG}
@@ -13,32 +14,35 @@ variables:
   CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
 
 default:
-  image: liuchong/rustup:stable
-  before_script:
-    - rustup update
+  image: rustdocker/rust:stable
 
-build-debug:
+build:stable:
   stage: build
   script:
     - cargo build --workspace --all-features --color=always
   artifacts:
+    public: false
     paths:
       - target/debug/
-    expire_in: 1 week
+    expire_in: 1 day
 
-build-doc:
-  stage: build
-  script:
-    - cargo doc --workspace --all-features --color=always
-  artifacts:
-    paths:
-      - target/doc/
-    expire_in: 1 week
-
-test-job:
+test:stable:
   stage: test
   dependencies:
-    - build-debug
+    - build:stable
   script:
     - cargo check --workspace --all-features --color=always
-    - cargo test --workspace --all-features --color=always
+    - cargo test --workspace --all-features --color=always --verbose --jobs 1
+
+pages:
+  stage: deploy
+  only:
+    - master
+  script:
+    - cargo doc --workspace --all-features --color=always
+    - rm -rf public || true
+    - mkdir public
+    - cp -R target/doc/* public
+  artifacts:
+    paths:
+      - public
