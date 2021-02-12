@@ -1,5 +1,11 @@
 # pam-client - Rust-style API to Pluggable Authentication Modules (PAM)
 
+[![Crates.io](https://img.shields.io/crates/v/pam-client.svg)](https://crates.io/crates/pam-client)
+[![Documentation](https://docs.rs/pam-client/badge.svg)](https://docs.rs/pam-client/)
+[![License](https://img.shields.io/crates/l/pam-client.svg)](https://www.mozilla.org/en-US/MPL/2.0/)
+[![Build Status](https://gitlab.com/cg909/rust-pam-client/badges/master/pipeline.svg)](https://gitlab.com/cg909/rust-pam-client/-/commits/master)
+[![Test Coverage](https://gitlab.com/cg909/rust-pam-client/badges/master/coverage.svg)](https://gitlab.com/cg909/rust-pam-client/-/commits/master)
+
 ## Usage
 
 1. Add the following to your Cargo.toml:
