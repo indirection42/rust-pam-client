@@ -6,17 +6,16 @@ cache:
   key: ${CI_COMMIT_REF_SLUG}
   paths:
     - .cargo/
-    - .rustup/
   policy: pull-push
 
+variables:
+  CARGO_INCREMENTAL: 0
+  CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
+
 default:
+  image: liuchong/rustup:stable
   before_script:
-    - |
-      if [ -e .cargo/bin/rustup ];
-      then .cargo/bin/rustup update;
-      else curl https://sh.rustup.rs -sSf | HOME="$CI_PROJECT_DIR" sh -s -- -q -y --no-modify-path --default-toolchain stable;
-      fi
-    - source .cargo/env
+    - rustup update
 
 build-debug:
   stage: build
