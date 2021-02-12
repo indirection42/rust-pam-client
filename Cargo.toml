@@ -3,11 +3,15 @@ name = "pam-client"
 version = "0.1.0"
 authors = ["Christoph Grenz <christophg+gitorious@grenz-bonn.de>"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Application API wrapper to Pluggable Authentication Modules (PAM)"
+readme = "README.md"
+repository = "https://gitlab.com/cg909/rust-pam-client/"
+license = "MPL-2.0"
+license-file = "LICENSE"
+keywords = ["PAM", "libpam", "authentication"]
+categories = ["authentication", "api-bindings", "os::unix-apis"]
 
 [features]
-
 default = ["cli"]
 cli = ["rpassword"]
 
