@@ -42,7 +42,7 @@ test:stable:
     - cargo check --workspace --all-features --color=always
     - cargo test --workspace --all-features --color=always --verbose --jobs 1
     - kcov --verify
-        --include-pattern=/rust-pam-client/
+        --include-pattern=/rust-pam-client/src/
         --exclude-line='#[derive,pub struct'
         --exclude-region='#[cfg(test)]:#[cfg(testkcovstopmarker)]'
         target/cov
