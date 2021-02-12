@@ -32,10 +32,18 @@ test:stable:
     - build:stable
   before_script:
     - apt-get update -qy
-    - apt-get -qy install libpam0g-dev
+    - apt-get -qy install libpam0g-dev kcov
   script:
     - cargo check --workspace --all-features --color=always
     - cargo test --workspace --all-features --color=always --verbose --jobs 1
+    - kcov --verify
+        --include-pattern=/rust-pam-client/
+        --exclude-line='#[derive,pub struct'
+        --exclude-region='#[cfg(test)]:#[cfg(testkcovstopmarker)]'
+        target/cov
+        target/debug/deps/pam_client-* --test-threads 1
+    - COVERAGE=$(grep -Po 'covered":.*?[^\\]"' target/cov/index.js | grep "[0-9]*\.[0-9]" -o)
+    - echo "Coverage:" $COVERAGE
 
 pages:
   stage: deploy
