@@ -48,9 +48,9 @@ impl ResponseBuffer {
 	#[allow(unused)]
 	pub fn len(&self) -> usize { self.items.len() }
 
-	/// Returns `true` if the buffer was constructed with a `len` > 0.
+	/// Returns `false` if the buffer was constructed with a `len` > 0.
 	#[allow(unused)]
-	pub fn is_empty(&self) -> bool { self.items.len() > 0 }
+	pub fn is_empty(&self) -> bool { self.items.len() <= 0 }
 
 	/// Iterates over all contained `PamResponse` items.
 	#[inline]
