@@ -43,7 +43,7 @@ test:stable:
         --exclude-line='#[derive,pub struct'
         --exclude-region='#[cfg(test)]:#[cfg(testkcovstopmarker)]'
         target/cov
-        target/debug/deps/pam_client-* --test-threads 1
+        target/debug/deps/pam_client-???????????????? --test-threads 1
     - COVERAGE=$(grep -Po 'covered":.*?[^\\]"' target/cov/index.js | grep "[0-9]*\.[0-9]" -o)
     - echo "Coverage:" $COVERAGE
 
