@@ -160,7 +160,7 @@ mod tests {
 			msg_style: MessageStyle::PROMPT_ECHO_ON as i32,
 			msg: text.as_ptr()
 		};
-		let mut msg_ptr = &mut msg as *mut PamMessage;
+		let mut msg_ptr = &mut msg as *mut _;
 
 		let mut responses: *mut PamResponse = ptr::null_mut();
 
@@ -168,7 +168,7 @@ mod tests {
 			c_callback(
 				1,
 				ptr::null_mut(),
-				&mut responses as *mut *mut PamResponse,
+				&mut responses as *mut *mut _,
 				appdata,
 			),
 			ReturnCode::BUF_ERR as i32,
@@ -189,8 +189,8 @@ mod tests {
 		assert_eq!(
 			c_callback(
 				1,
-				&mut msg_ptr as *mut *mut PamMessage,
-				&mut responses as *mut *mut PamResponse,
+				&mut msg_ptr as *mut *mut _,
+				&mut responses as *mut *mut _,
 				ptr::null_mut(),
 			),
 			ReturnCode::BUF_ERR as i32,
@@ -200,8 +200,8 @@ mod tests {
 		assert_eq!(
 			c_callback(
 				-1,
-				&mut msg_ptr as *mut *mut PamMessage,
-				&mut responses as *mut *mut PamResponse,
+				&mut msg_ptr as *mut *mut _,
+				&mut responses as *mut *mut _,
 				appdata,
 			),
 			ReturnCode::BUF_ERR as i32,
@@ -226,7 +226,7 @@ mod tests {
 			msg_style: MessageStyle::PROMPT_ECHO_ON as i32,
 			msg: ptr::null_mut()
 		};
-		let mut msg_ptr = &mut msg as *mut PamMessage;
+		let mut msg_ptr = &mut msg as *mut _;
 
 		let mut responses: *mut PamResponse = ptr::null_mut();
 
@@ -234,8 +234,8 @@ mod tests {
 		assert_eq!(
 			c_callback(
 				0,
-				&mut msg_ptr as *mut *mut PamMessage,
-				&mut responses as *mut *mut PamResponse,
+				&mut msg_ptr as *mut *mut _,
+				&mut responses as *mut *mut _,
 				appdata,
 			),
 			ReturnCode::BUF_ERR as i32,
@@ -257,14 +257,14 @@ mod tests {
 			msg_style: style as i32,
 			msg: text.as_ptr()
 		};
-		let mut msg_ptr = &mut msg as *mut PamMessage;
+		let mut msg_ptr = &mut msg as *mut _;
 
 		let mut responses: *mut PamResponse = ptr::null_mut();
 
 		let code = c_callback(
 			1,
-			&mut msg_ptr as *mut *mut PamMessage,
-			&mut responses as *mut *mut PamResponse,
+			&mut msg_ptr as *mut *mut _,
+			&mut responses as *mut *mut _,
 			appdata,
 		);
 		assert_eq!(
@@ -293,8 +293,8 @@ mod tests {
 		);
 
 		unsafe {
-			free((*responses).resp as *mut c_void);
-			free(responses as *mut c_void);
+			free((*responses).resp as *mut _);
+			free(responses as *mut _);
 		}
 
 		// There should be exactly zero message in the log
@@ -314,14 +314,14 @@ mod tests {
 			msg_style: MessageStyle::PROMPT_ECHO_OFF as i32,
 			msg: text.as_ptr()
 		};
-		let mut msg_ptr = &mut msg as *mut PamMessage;
+		let mut msg_ptr = &mut msg as *mut _;
 
 		let mut responses: *mut PamResponse = ptr::null_mut();
 
 		let code = c_callback(
 			1,
-			&mut msg_ptr as *mut *mut PamMessage,
-			&mut responses as *mut *mut PamResponse,
+			&mut msg_ptr as *mut *mut _,
+			&mut responses as *mut *mut _,
 			appdata,
 		);
 		assert_eq!(
@@ -362,14 +362,14 @@ mod tests {
 				None => ptr::null(),
 			}
 		};
-		let mut msg_ptr = &mut msg as *mut PamMessage;
+		let mut msg_ptr = &mut msg as *mut _;
 
 		let mut responses: *mut PamResponse = ptr::null_mut();
 
 		let code = c_callback(
 			1,
-			&mut msg_ptr as *mut *mut PamMessage,
-			&mut responses as *mut *mut PamResponse,
+			&mut msg_ptr as *mut *mut _,
+			&mut responses as *mut *mut _,
 			appdata,
 		);
 		assert_eq!(
@@ -396,7 +396,7 @@ mod tests {
 		);
 
 		unsafe {
-			free(responses as *mut c_void);
+			free(responses as *mut _);
 		}
 
 		// There should be exactly one message in the log

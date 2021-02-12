@@ -24,7 +24,7 @@ use std::convert::TryFrom;
 use std::cell::Cell;
 use std::mem::take;
 use libc::{c_char, c_int, c_void};
-use pam_sys::types::{PamItemType, PamHandle, PamConversation};
+use pam_sys::types::{PamItemType, PamHandle};
 use pam_sys::wrapped::{start, end, get_item, set_item, setcred, authenticate, acct_mgmt, chauthtok, open_session, close_session, getenvlist, getenv, putenv};
 
 /// Internal: Builds getters/setters for string-typed PAM items.
@@ -36,7 +36,7 @@ macro_rules! impl_pam_str_item {
 			if ptr.is_null() {
 				return Err(Error::new(self.handle(), ReturnCode::PERM_DENIED));
 			}
-			let string = unsafe { CStr::from_ptr(ptr as *const libc::c_char) }.to_string_lossy().into_owned();
+			let string = unsafe { CStr::from_ptr(ptr as *const _) }.to_string_lossy().into_owned();
 			return Ok(string);
 		}
 		
@@ -46,7 +46,7 @@ macro_rules! impl_pam_str_item {
 				None => unsafe { self.set_item($item_type, ptr::null()) },
 				Some(string) => {
 					let cstring = CString::new(string).map_err(|_| Error::new(self.handle(), ReturnCode::BUF_ERR))?;
-					unsafe { self.set_item($item_type, cstring.as_ptr() as *const c_void) }
+					unsafe { self.set_item($item_type, cstring.as_ptr() as *const _) }
 				}
 			}
 		}
@@ -269,11 +269,11 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 				#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 				let xauthdata = XAuthData {
 					namelen: name_bytes.len() as i32 - 1,
-					name: name_bytes.as_ptr() as *const libc::c_char,
+					name: name_bytes.as_ptr() as *const _,
 					datalen: data.len() as i32,
-					data: data.as_ptr() as *const libc::c_char
+					data: data.as_ptr() as *const _
 				};
-				unsafe { self.set_item(PamItemType::XAUTHDATA, &xauthdata as *const XAuthData as *const c_void) }
+				unsafe { self.set_item(PamItemType::XAUTHDATA, &xauthdata as *const _ as *const c_void) }
 			}
 		}
 	}
@@ -312,7 +312,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// `nix::unistd::execve`.
 	#[rustversion::attr(since(1.48), doc(alias = "pam_getenvlist"))]
 	pub fn envlist(&self) -> EnvList {
-		unsafe { EnvList::new(getenvlist(self.handle()) as *mut *mut c_char) }
+		unsafe { EnvList::new(getenvlist(self.handle()) as *mut *mut _) }
 	}
 
 	/// Authenticates a user.
@@ -543,7 +543,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler + Default {
 		};
 		// Create callback struct for C code
 		let pam_conv = to_pam_conv(&mut new_handler);
-		if let Err(e) = unsafe { self.set_item(PamItemType::CONV, &pam_conv as *const PamConversation as *const c_void) } {
+		if let Err(e) = unsafe { self.set_item(PamItemType::CONV, &pam_conv as *const _ as *const c_void) } {
 			Err(e.into_with_payload((self, new_handler)))
 		} else {
 			// Initialize handler

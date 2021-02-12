@@ -20,7 +20,7 @@ use std::ops::{Deref, DerefMut};
 use std::hash::{Hasher, Hash};
 use std::mem::MaybeUninit;
 use std::{mem, slice, cmp, borrow};
-use libc::{malloc, calloc, free, c_void};
+use libc::{malloc, calloc, free};
 
 /// A pointer type for C-compatible heap allocation.
 ///
@@ -200,7 +200,7 @@ impl<T> CBox<[T]> {
 	/// to put the cleanup responsibility back to `CBox`.
 	#[rustversion::attr(since(1.46), const)]
 	pub fn into_raw_unsized(b: CBox<[T]>) -> *mut T {
-		let ptr: NonNull<[T]> = b.0;
+		let ptr: NonNull<_> = b.0;
 		mem::forget(b);
 		ptr.as_ptr() as *mut T
 	}
@@ -216,7 +216,7 @@ impl<T> CBox<MaybeUninit<T>> {
 	/// not yet fully initialized causes undefined behavior.
 	pub unsafe fn assume_init(self) -> CBox<T> {
 		CBox::<T> (
-			NonNull::new_unchecked(CBox::into_raw(self) as *mut T)
+			NonNull::new_unchecked(CBox::into_raw(self) as *mut _)
 		)
 	}
 }
@@ -231,7 +231,7 @@ impl<T> CBox<[MaybeUninit<T>]> {
 	/// not yet fully initialized causes undefined behavior.
 	pub unsafe fn assume_all_init(self) -> CBox<[T]> {
 		CBox::<[T]> (
-			NonNull::new_unchecked(CBox::into_raw(self) as *mut [T])
+			NonNull::new_unchecked(CBox::into_raw(self) as *mut _)
 		)
 	}
 }
@@ -245,7 +245,7 @@ impl<T: ?Sized> Drop for CBox<T> {
 		// should have a pointer to `self.0` anymore.
 		unsafe {
 			drop_in_place(ptr);
-			free(ptr as *mut c_void);
+			free(ptr as *mut _);
 		};
 	}
 }
@@ -333,6 +333,7 @@ unsafe impl<T: ?Sized + Sync> Sync for CBox<T> {}
 mod tests {
 	use std::mem::size_of;
 	use std::ptr::null_mut;
+	use libc::c_void;
 	use super::*;
 
 	/// Check if object and pointer sizes match
