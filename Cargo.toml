@@ -7,7 +7,6 @@ description = "Application API wrapper to Pluggable Authentication Modules (PAM)
 readme = "README.md"
 repository = "https://gitlab.com/cg909/rust-pam-client/"
 license = "MPL-2.0"
-license-file = "LICENSE"
 keywords = ["PAM", "libpam", "authentication"]
 categories = ["authentication", "api-bindings", "os::unix-apis"]
 
