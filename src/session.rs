@@ -175,7 +175,6 @@ impl<'a, ConvT> Drop for Session<'a, ConvT> where ConvT: ConversationHandler {
 	}
 }
 
-
 #[cfg(test)]
 mod tests {
 	use super::*;

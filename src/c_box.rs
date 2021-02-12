@@ -41,10 +41,8 @@ impl<T> CBox<T> {
 	///
 	/// On failure the value is handed back in the error payload.
 	pub fn try_new(value: T) -> ExtResult<Self, T> {
-		let size = cmp::max(mem::size_of_val(&value), 1);
-		if size > isize::MAX as usize {
-			return Err(Self::buf_err().into_with_payload(value));
-		}
+		let size = cmp::max(mem::size_of::<T>(), 1);
+		// No size check neccessary, as `value` could be constructed.
 		let ptr = unsafe {
 			malloc(size)
 		} as *mut T;
@@ -71,9 +69,7 @@ impl<T> CBox<T> {
 	/// - `BUF_ERR` – Allocation failure or pointer preconditions unmet
 	pub fn try_new_zeroed() -> Result<CBox<MaybeUninit<T>>> {
 		let size = cmp::max(mem::size_of::<T>(), 1);
-		if size > isize::MAX as usize {
-			return Err(Self::buf_err());
-		}
+		// No size check neccessary, as `T` wasn't rejected by the compiler.
 		let ptr = unsafe {
 			calloc(1, size)
 		} as *mut MaybeUninit<T>;
