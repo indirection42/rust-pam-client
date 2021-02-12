@@ -260,17 +260,17 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 		match value {
 			None => unsafe { self.set_item(PamItemType::XAUTHDATA, ptr::null()) },
 			Some((name, data)) => {
-				if data.len() > i32::MAX as usize || data.len() > i32::MAX as usize {
+				let name_bytes = name.to_bytes_with_nul();
+
+				if name_bytes.len() > i32::MAX as usize || data.len() > i32::MAX as usize {
 					return Err(Error::new(self.handle(), ReturnCode::BUF_ERR))
 				}
-				
-				let name_bytes = name.to_bytes_with_nul();
 
 				#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 				let xauthdata = XAuthData {
 					namelen: name_bytes.len() as i32 - 1,
 					name: name_bytes.as_ptr() as *const libc::c_char,
-					datalen: data.len() as i32 - 1,
+					datalen: data.len() as i32,
 					data: data.as_ptr() as *const libc::c_char
 				};
 				unsafe { self.set_item(PamItemType::XAUTHDATA, &xauthdata as *const XAuthData as *const c_void) }
