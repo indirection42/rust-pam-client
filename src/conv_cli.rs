@@ -118,3 +118,30 @@ impl ConversationHandler for Conversation {
 		eprintln!("{}{}", &self.error_prefix, msg.to_string_lossy());
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_trim() {
+		let mut value = "Test\r\n".to_string();
+		trim_newline(&mut value);
+		assert_eq!(value, "Test");
+
+		let mut value = "Test\n".to_string();
+		trim_newline(&mut value);
+		assert_eq!(value, "Test");
+	}
+
+	#[test]
+	fn test_output() {
+		let mut c = Conversation::default();
+		c.set_info_prefix("INFO: ");
+		c.set_error_prefix("ERROR: ");
+		assert_eq!(c.info_prefix(), "INFO: ");
+		assert_eq!(c.error_prefix(), "ERROR: ");
+		c.text_info(&CString::new("test").unwrap());
+		c.error_msg(&CString::new("test2").unwrap());
+	}
+}

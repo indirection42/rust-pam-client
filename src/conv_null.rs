@@ -52,3 +52,18 @@ impl ConversationHandler for Conversation {
 
 	fn error_msg(&mut self, _msg: &CStr) {}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test() {
+		let text = CString::new("test").unwrap();
+		let mut c = Conversation::default();
+		assert!(c.prompt_echo_on(&text).is_err());
+		assert!(c.prompt_echo_off(&text).is_err());
+		c.text_info(&text);
+		c.error_msg(&text);
+	}
+}

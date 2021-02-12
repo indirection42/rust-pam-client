@@ -194,5 +194,4 @@ mod tests {
 		let _ = session.envlist();
 		let _ = session.leak();
 	}
-
 }
