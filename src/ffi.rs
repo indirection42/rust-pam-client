@@ -140,6 +140,7 @@ mod tests {
 	use libc::free;
 	use super::*;
 	use crate::conv_mock::{Conversation, LogEntry};
+	use crate::conv_null::Conversation as NullConversation;
 
 	fn make_handler() -> (Box<Conversation>, PamConversation) {
 		let mut handler = Box::new(Conversation::with_credentials("test usër", "paßword"));
@@ -299,6 +300,41 @@ mod tests {
 		// There should be exactly zero message in the log
 		assert_eq!(handler.log.len(), 0, "log contained `left` messages instead of `right`");
 	}
+
+	/// Check if `pam_conv` correctly handles an error from the conversation handler
+	#[test]
+	fn test_prompt_err() {
+		let mut handler = Box::new(NullConversation::new());
+		let pam_conv = to_pam_conv(&mut handler);
+		let c_callback = pam_conv.conv.unwrap();
+		let appdata = pam_conv.data_ptr;
+
+		let text = CString::new("").unwrap();
+		let mut msg = PamMessage {
+			msg_style: MessageStyle::PROMPT_ECHO_OFF as i32,
+			msg: text.as_ptr()
+		};
+		let mut msg_ptr = &mut msg as *mut PamMessage;
+
+		let mut responses: *mut PamResponse = ptr::null_mut();
+
+		let code = c_callback(
+			1,
+			&mut msg_ptr as *mut *mut PamMessage,
+			&mut responses as *mut *mut PamResponse,
+			appdata,
+		);
+		assert_eq!(
+			code,
+			ReturnCode::CONV_ERR as i32,
+			"pam_conv failed with error code `left`"
+		);
+
+		assert!(
+			responses.is_null(),
+			"response is not null after conversation with error"
+		);
+	}
 	
 	/// Check if `pam_conv` correctly answers an echoing prompt
 	#[test]
@@ -313,15 +349,18 @@ mod tests {
 	}
 
 	/// Check if `pam_conv` correctly handles a info/error message
-	fn test_output_msg(style: MessageStyle, text: &str) -> LogEntry {
-		let (handler, pam_conv) = make_handler();
+	fn test_output_msg(style: MessageStyle, text: Option<&str>) -> LogEntry {
+		let (mut handler, pam_conv) = make_handler();
 		let c_callback = pam_conv.conv.unwrap();
 		let appdata = pam_conv.data_ptr;
 
-		let c_text = CString::new(text).unwrap();
+		let c_text = CString::new(text.unwrap_or("")).unwrap();
 		let mut msg = PamMessage {
 			msg_style: style as i32,
-			msg: c_text.as_ptr()
+			msg: match text {
+				Some(_) => c_text.as_ptr(),
+				None => ptr::null(),
+			}
 		};
 		let mut msg_ptr = &mut msg as *mut PamMessage;
 
@@ -363,14 +402,18 @@ mod tests {
 		// There should be exactly one message in the log
 		assert_eq!(handler.log.len(), 1, "log contained `left` messages instead of `right`");
 
-		return handler.log[0].clone()
+		let result = handler.log[0].clone();
+		// Check if clearing works
+		handler.clear_log();
+		assert_eq!(handler.log.len(), 0, "log could not be emptied");
+		result
 	}
 
 	/// Check if `pam_conv` correctly transmits an error message
 	#[test]
 	fn test_error_msg() {
 		const MSG: &str = "test error öäüß";
-		let logentry = test_output_msg(MessageStyle::ERROR_MSG, MSG);
+		let logentry = test_output_msg(MessageStyle::ERROR_MSG, Some(MSG));
 		if let LogEntry::Error(msg) = logentry {
 			assert_eq!(msg.to_string_lossy(), MSG, "log contained unexpected message `left`");
 		} else {
@@ -382,9 +425,20 @@ mod tests {
 	#[test]
 	fn test_info_msg() {
 		const MSG: &str = "test info äöüß";
-		let logentry = test_output_msg(MessageStyle::TEXT_INFO, MSG);
+		let logentry = test_output_msg(MessageStyle::TEXT_INFO, Some(MSG));
 		if let LogEntry::Info(msg) = logentry {
 			assert_eq!(msg.to_string_lossy(), MSG, "log contained unexpected message `left`");
+		} else {
+			assert!(false, "log contained unexpected message type");
+		}
+	}
+
+	/// Check if a null pointer is safely converted into an empty string
+	#[test]
+	fn test_null_msg() {
+		let logentry = test_output_msg(MessageStyle::TEXT_INFO, None);
+		if let LogEntry::Info(msg) = logentry {
+			assert_eq!(msg.to_string_lossy(), "", "log contained unexpected message `left`");
 		} else {
 			assert!(false, "log contained unexpected message type");
 		}

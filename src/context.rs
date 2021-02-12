@@ -586,6 +586,8 @@ mod tests {
 		// Check setting/getting of string items.
 		context.set_ruser(Some("nobody")).unwrap();
 		assert_eq!(context.ruser().unwrap().unwrap(), "nobody");
+		// Check getting an unaccessible item
+		assert!(context.get_item(PamItemType::AUTHTOK).is_err());
 		// Check environment setting/getting
 		context.putenv("TEST=1").unwrap();
 		assert_eq!(context.getenv("TEST").unwrap(), "1");
@@ -609,8 +611,9 @@ mod tests {
 		// Set username
 		context.set_user(Some("anybody")).unwrap();
 		// Replace conversation handler
-		let (context, _) = context.replace_conversation(crate::conv_mock::Conversation::new()).unwrap();
+		let (context, old_conv) = context.replace_conversation(crate::conv_mock::Conversation::default()).unwrap();
 		// Check if set username was propagated to the new handler
 		assert_eq!(context.conversation().username, "anybody");
+		let (_context, _) = context.replace_conversation(old_conv).unwrap();
 	}
 }

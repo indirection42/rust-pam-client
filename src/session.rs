@@ -174,3 +174,23 @@ impl<'a, ConvT> Drop for Session<'a, ConvT> where ConvT: ConversationHandler {
 		}
 	}
 }
+
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_token() {
+		let token = SessionToken::FullSession;
+
+		let mut context = Context::new(
+			"test",
+			Some("user"),
+			crate::conv_null::Conversation::default()
+		).unwrap();
+		let session = context.unleak_session(token);
+		let _ = session.leak();
+	}
+
+}
