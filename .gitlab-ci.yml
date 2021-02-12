@@ -1,6 +1,7 @@
 stages:
   - build
   - test
+  - pages
   - deploy
 
 cache:
@@ -14,7 +15,7 @@ variables:
   CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
 
 default:
-  image: rustdocker/rust:stable
+  image: rust:buster
 
 build:stable:
   stage: build
@@ -28,6 +29,8 @@ build:stable:
 
 test:stable:
   stage: test
+  services:
+    - kcov/kcov:latest
   dependencies:
     - build:stable
   before_script:
@@ -46,9 +49,10 @@ test:stable:
     - echo "Coverage:" $COVERAGE
 
 pages:
-  stage: deploy
+  stage: pages
   only:
     - master
+  needs: ["test:stable"]
   script:
     - cargo doc --workspace --all-features --color=always
     - rm -rf public || true
@@ -60,6 +64,8 @@ pages:
 
 publish:
   stage: deploy
+  dependencies: ["test:stable"]
+  needs: ["test:stable"]
   only:
     refs:
       - tags
