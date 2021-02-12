@@ -69,6 +69,7 @@ pages:
     - mkdir public
     - cp -R target/doc/* public
     - cp -R target/cov public/
+    - find -L public/cov/ -type l -delete
   artifacts:
     paths:
       - public
