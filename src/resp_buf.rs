@@ -154,6 +154,7 @@ mod tests {
 		let mut buffer = ResponseBuffer::new(3).unwrap();
 		buffer.put(0, Some(CString::new("some response").unwrap()));
 		buffer.put(1, None);
+		buffer.put(2, Some(CString::new("some response").unwrap()));
 		buffer.put(2, Some(CString::new("another response").unwrap()));
 		return buffer;
 	}
@@ -162,7 +163,9 @@ mod tests {
 	fn test_len() {
 		assert_eq!(ResponseBuffer::new(1).unwrap().len(), 1);
 		assert_eq!(ResponseBuffer::new(3).unwrap().len(), 3);
+		assert_eq!(ResponseBuffer::new(3).unwrap().is_empty(), false);
 		assert_eq!(ResponseBuffer::new(65535).unwrap().len(), 65535);
+		assert_eq!(ResponseBuffer::new(65535).unwrap()[..].len(), 65535);
 
 		assert!(ResponseBuffer::new(0).is_err());
 		assert!(ResponseBuffer::new(-1).is_err());

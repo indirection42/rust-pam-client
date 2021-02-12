@@ -304,3 +304,45 @@ impl<T: Send + Sync + Debug + 'static> From<ErrorWith<T>> for io::Error {
 		}, Box::new(error))
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::conv_null::Conversation;
+	use crate::Context;
+
+	#[test]
+	fn test_basic() {
+		let context = Context::new("test", None, Conversation::default()).unwrap();
+		let error = Error::new(context.handle(), ReturnCode::CONV_ERR)
+			.into_with_payload("foo");
+		assert_eq!(error.payload(), Some(&"foo"));
+		assert!(format!("{:?}", error).len() > 1);
+		let mut error = error.map(|_| usize::MIN);
+		assert_eq!(error.payload(), Some(&usize::MIN));
+		let _ = error.take_payload();
+		assert_eq!(error.take_payload(), None);
+		let error = error.map(|_| usize::MIN);
+		assert_eq!(error.payload(), None);
+		assert!(format!("{:?} {}", error, error).len() > 4);
+	}
+
+	#[test]
+	#[should_panic="assertion failed"]
+	fn test_invalid() {
+		let context = Context::new("test", None, Conversation::default()).unwrap();
+		let _ = Error::new(context.handle(), ReturnCode::SUCCESS);
+	}
+
+	#[test]
+	fn test_no_msg() {
+		let error = Error::try_from(ReturnCode::BUF_ERR).unwrap();
+		assert_eq!(format!("{}", error), format!("<{}>", (ReturnCode::BUF_ERR as i32)));
+		let _error: ErrorWith<()> = error.into();
+	}
+
+	#[test]
+	fn test_invalid_from() {
+		assert!(Error::try_from(ReturnCode::SUCCESS).is_err());
+	}
+}
