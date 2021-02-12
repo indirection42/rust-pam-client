@@ -188,7 +188,10 @@ mod tests {
 			Some("user"),
 			crate::conv_null::Conversation::default()
 		).unwrap();
-		let session = context.unleak_session(token);
+		let mut session = context.unleak_session(token);
+		let _ = session.putenv("TEST=1");
+		let _ = session.getenv("TEST");
+		let _ = session.envlist();
 		let _ = session.leak();
 	}
 

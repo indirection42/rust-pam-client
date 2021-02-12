@@ -572,6 +572,7 @@ unsafe impl<ConvT> Send for Context<ConvT> where ConvT: ConversationHandler + Se
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use std::ffi::OsStr;
 
 	#[test]
 	fn test_basic() {
@@ -584,18 +585,48 @@ mod tests {
 		assert_eq!(context.service().unwrap().unwrap(), "test");
 		assert_eq!(context.user().unwrap().unwrap(), "user");
 		// Check setting/getting of string items.
+		context.set_user_prompt(Some("Who art thou? ")).unwrap();
+		assert_eq!(context.user_prompt().unwrap().unwrap(), "Who art thou? ");
+		context.set_tty(Some("/dev/tty")).unwrap();
+		assert_eq!(context.tty().unwrap().unwrap(), "/dev/tty");
 		context.set_ruser(Some("nobody")).unwrap();
 		assert_eq!(context.ruser().unwrap().unwrap(), "nobody");
+		context.set_rhost(Some("nowhere")).unwrap();
+		assert_eq!(context.rhost().unwrap().unwrap(), "nowhere");
+		// Check linux specific items
+		#[cfg(target_os="linux")]
+		{
+			context.set_authtok_type(Some("TEST")).unwrap();
+			assert_eq!(context.authtok_type().unwrap().unwrap(), "TEST");
+			context.set_xdisplay(Some(":0")).unwrap();
+			assert_eq!(context.xdisplay().unwrap().unwrap(), ":0");
+			let xauthname = CString::new("TEST_DATA").unwrap();
+			let xauthdata = [];
+			context.set_xauthdata(Some((&xauthname, &xauthdata))).unwrap();
+			let (resultname, resultdata) = context.xauthdata().unwrap().unwrap();
+			assert_eq!(resultname, xauthname.as_c_str());
+			assert_eq!(resultdata, &xauthdata);
+		};
 		// Check getting an unaccessible item
 		assert!(context.get_item(PamItemType::AUTHTOK).is_err());
 		// Check environment setting/getting
 		context.putenv("TEST=1").unwrap();
+		context.putenv("TEST2=2").unwrap();
 		assert_eq!(context.getenv("TEST").unwrap(), "1");
 		let env = context.envlist();
 		assert!(env.len() > 0);
 		for (key, value) in env.iter_tuples() {
 			if key.to_string_lossy() == "TEST" {
 				assert_eq!(value.to_string_lossy(), "1");
+			}
+		}
+		for item in &env {
+			let string = item.to_string();
+			if string.starts_with("TEST=") {
+				assert_eq!(string, "TEST=1");
+			} else if string.starts_with("TEST2=") {
+				let (_,v): (&OsStr, &OsStr) = item.into();
+				assert_eq!(v.to_string_lossy(), "2");
 			}
 		}
 		drop(context)
@@ -615,5 +646,34 @@ mod tests {
 		// Check if set username was propagated to the new handler
 		assert_eq!(context.conversation().username, "anybody");
 		let (_context, _) = context.replace_conversation(old_conv).unwrap();
+	}
+
+	/// Shallowly tests a full authentication + password change + session cycle.
+	///
+	/// This will fail if the environment is not appropriately
+	/// prepared and the test process has no elevated rights.
+	/// Currently it is only checked if some function crashes
+	/// or panics, not if the authentication succeeds.
+	#[test]
+	#[cfg_attr(not(feature="full_test"), ignore)]
+	fn test_full() {
+		let mut context = Context::new(
+			"test_rust_pam_client",
+			Some("nobody"),
+			crate::conv_null::Conversation::new()
+		).unwrap();
+		let _ = context.authenticate(Flag::SILENT);
+		let _ = context.acct_mgmt(Flag::SILENT);
+		let _ = context.chauthtok(Flag::CHANGE_EXPIRED_AUTHTOK);
+		let _ = context.reinitialize_credentials(Flag::SILENT);
+		if let Ok(mut session) = context.open_session(Flag::SILENT) {
+			let _ = session.refresh_credentials(Flag::SILENT);
+			let _ = session.reinitialize_credentials(Flag::SILENT);
+			let _ = session.envlist();
+			let _ = session.close(Flag::SILENT);
+		};
+		if let Ok(mut session) = context.open_pseudo_session(Flag::SILENT) {
+			let _ = session.refresh_credentials(Flag::SILENT);
+		};
 	}
 }

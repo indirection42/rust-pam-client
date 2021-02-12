@@ -345,14 +345,47 @@ mod tests {
 		assert_eq!(size_of::<CBox<[i32; 3]>>(), size_of::<*mut [i32; 3]>());
 	}
 	
-	/// Check if a simple object can be allocated
+	/// Check if a simple object can be allocated, unwrapped, rewrapped and dropped
 	#[test]
 	fn test_allocation() {
 		let mut b: CBox<i32> = CBox::new(32);
 		assert_eq!(*b, 32);
 		*b = 42;
 		assert_eq!(*b, 42);
+		let ptr = CBox::into_raw(b);
+		assert_eq!(unsafe { *ptr }, 42);
+		let b = unsafe { CBox::from_raw(ptr) };
 		drop(b);
+	}
+
+	/// Check if a simple object can be allocated, unwrapped, rewrapped and dropped
+	#[test]
+	fn test_equality() {
+		let a: CBox<i32> = 32.into();
+		let mut b: CBox<i32> = CBox::new(32);
+		assert_eq!(a, b);
+		*b = 42;
+		assert_ne!(a, b);
+		assert_eq!(a.partial_cmp(&b), Some(Ordering::Less));
+		assert_eq!(a.cmp(&b), Ordering::Less);
+	}
+
+	/// Check if a zeroed boxed can be created, is correctly zero-initialized
+	/// and is correctly modifiable.
+	#[test]
+	fn test_zeroed() {
+		let uninit_b = CBox::<u64>::new_zeroed();
+		let mut b = unsafe { uninit_b.assume_init() };
+		assert_eq!(*b, 0);
+		*b = 42;
+		assert_eq!(*b, 42);
+	}
+
+	/// Check if a slice too big for the current architecture is rejected.
+	#[test]
+	#[should_panic = "memory allocation failed"]
+	fn test_toobig() {
+		let _b = CBox::<u64>::new_zeroed_slice(isize::MAX as usize);
 	}
 
 	/// Check if conversion from a null pointer panics.
