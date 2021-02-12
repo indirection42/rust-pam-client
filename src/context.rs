@@ -31,13 +31,13 @@ use pam_sys::wrapped::{start, end, get_item, set_item, setcred, authenticate, ac
 macro_rules! impl_pam_str_item {
 	($name:ident, $set_name:ident, $item_type:expr$(, $doc:literal$(, $extdoc:literal)?)?$(,)?) => {
 		$(#[doc = "Returns "]#[doc = $doc]$(#[doc = "\n\n"]#[doc = $extdoc])?)?
-		pub fn $name(&self) -> Result<Option<String>> {
+		pub fn $name(&self) -> Result<String> {
 			let ptr = self.get_item($item_type)?;
 			if ptr.is_null() {
-				return Ok(None);
+				return Err(Error::new(self.handle(), ReturnCode::PERM_DENIED));
 			}
 			let string = unsafe { CStr::from_ptr(ptr as *const libc::c_char) }.to_string_lossy().into_owned();
-			return Ok(Some(string));
+			return Ok(string);
 		}
 		
 		$(#[doc = "Sets "]#[doc = $doc])?
@@ -184,7 +184,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// Expected error codes include:
 	/// - `BAD_ITEM` – Unsupported, undefined or inaccessible item
 	/// - `BUF_ERR` – Memory buffer error
-	/// - `PERM_DENIED` – The value was NULL
+	/// - `PERM_DENIED` – The value was NULL/None
 	#[rustversion::attr(since(1.48), doc(alias = "pam_get_item"))]
 	pub fn get_item(&self, item_type: PamItemType) -> Result<*const c_void> {
 		let mut result: *const c_void = ptr::null();
@@ -227,10 +227,10 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 
 	/// Returns X authentication data as (name, value) pair (Linux specific).
 	#[cfg(any(target_os="linux",doc))]
-	pub fn xauthdata(&self) -> Result<Option<(&CStr, &[u8])>> {
+	pub fn xauthdata(&self) -> Result<(&CStr, &[u8])> {
 		let ptr = self.get_item(PamItemType::XAUTHDATA)? as *const XAuthData;
 		if ptr.is_null() {
-			return Ok(None);
+			return Err(Error::new(self.handle(), ReturnCode::PERM_DENIED));
 		}
 		let data = unsafe { &*ptr };
 
@@ -241,12 +241,12 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 		}
 
 		#[allow(clippy::cast_sign_loss)]
-		Ok(Some((
+		Ok((
 			CStr::from_bytes_with_nul(
 				unsafe { slice::from_raw_parts(data.name as *const u8, data.namelen as usize + 1) }
 			).map_err(|_| Error::new(self.handle(), ReturnCode::BUF_ERR))?,
 			unsafe { slice::from_raw_parts(data.data as *const u8, data.datalen as usize) }
-		)))
+		))
 	}
 
 	/// Sets X authentication data (Linux specific).
@@ -533,8 +533,13 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler + Default {
 	pub fn replace_conversation_boxed<T: ConversationHandler>(mut self, mut new_handler: Box<T>) -> ExtResult<(Context<T>, Box<ConvT>), (Self, Box<T>)> {
 		// Get current username for handler initialization
 		let username = match self.user() {
-			Ok(u) => u,
-			Err(e) => return Err(e.into_with_payload((self, new_handler)))
+			Ok(u) => Some(u),
+			Err(e) => {
+				if e.code() != ReturnCode::PERM_DENIED {
+					return Err(e.into_with_payload((self, new_handler)))
+				}
+				None
+			}
 		};
 		// Create callback struct for C code
 		let pam_conv = to_pam_conv(&mut new_handler);
@@ -582,28 +587,29 @@ mod tests {
 			crate::conv_null::Conversation::new()
 		).unwrap();
 		// Check if user name and service name are correctly saved
-		assert_eq!(context.service().unwrap().unwrap(), "test");
-		assert_eq!(context.user().unwrap().unwrap(), "user");
+		assert_eq!(context.service().unwrap(), "test");
+		assert_eq!(context.user().unwrap(), "user");
 		// Check setting/getting of string items.
 		context.set_user_prompt(Some("Who art thou? ")).unwrap();
-		assert_eq!(context.user_prompt().unwrap().unwrap(), "Who art thou? ");
+		assert_eq!(context.user_prompt().unwrap(), "Who art thou? ");
 		context.set_tty(Some("/dev/tty")).unwrap();
-		assert_eq!(context.tty().unwrap().unwrap(), "/dev/tty");
+		assert_eq!(context.tty().unwrap(), "/dev/tty");
 		context.set_ruser(Some("nobody")).unwrap();
-		assert_eq!(context.ruser().unwrap().unwrap(), "nobody");
+		assert_eq!(context.ruser().unwrap(), "nobody");
 		context.set_rhost(Some("nowhere")).unwrap();
-		assert_eq!(context.rhost().unwrap().unwrap(), "nowhere");
+		assert_eq!(context.rhost().unwrap(), "nowhere");
 		// Check linux specific items
 		#[cfg(target_os="linux")]
 		{
 			context.set_authtok_type(Some("TEST")).unwrap();
-			assert_eq!(context.authtok_type().unwrap().unwrap(), "TEST");
+			assert_eq!(context.authtok_type().unwrap(), "TEST");
 			context.set_xdisplay(Some(":0")).unwrap();
-			assert_eq!(context.xdisplay().unwrap().unwrap(), ":0");
+			assert_eq!(context.xdisplay().unwrap(), ":0");
 			let xauthname = CString::new("TEST_DATA").unwrap();
 			let xauthdata = [];
+			let _ = context.xauthdata();
 			context.set_xauthdata(Some((&xauthname, &xauthdata))).unwrap();
-			let (resultname, resultdata) = context.xauthdata().unwrap().unwrap();
+			let (resultname, resultdata) = context.xauthdata().unwrap();
 			assert_eq!(resultname, xauthname.as_c_str());
 			assert_eq!(resultdata, &xauthdata);
 		};
