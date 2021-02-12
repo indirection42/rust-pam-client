@@ -31,7 +31,7 @@ test:stable:
   dependencies:
     - build:stable
   before_script:
-    - apt -qy install libpam0g-dev
+    - apt-get -qy install libpam-runtime
   script:
     - cargo check --workspace --all-features --color=always
     - cargo test --workspace --all-features --color=always --verbose --jobs 1
