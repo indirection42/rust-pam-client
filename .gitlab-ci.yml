@@ -1,6 +1,7 @@
 stages:
   - build
   - test
+  - pages
   - deploy
 
 cache:
@@ -26,19 +27,6 @@ build:stable:
       - target/debug/
     expire_in: 1 day
 
-pages:
-  stage: build
-  only:
-    - master
-  script:
-    - cargo doc --workspace --all-features --color=always
-    - rm -rf public || true
-    - mkdir public
-    - cp -R target/doc/* public
-  artifacts:
-    paths:
-      - public
-
 test:stable:
   stage: test
   needs:
@@ -61,6 +49,29 @@ test:stable:
         target/debug/deps/pam_client-???????????????? --test-threads 1
     - COVERAGE=$(grep -Po 'covered":.*?[^\\]"' target/cov/index.js | grep "[0-9]*\.[0-9]" -o)
     - echo "Coverage:" $COVERAGE
+  artifacts:
+    public: false
+    paths:
+      - target/cov/
+    expire_in: 1 day
+
+pages:
+  stage: pages
+  only:
+    - master
+  needs:
+    - test:stable
+  dependencies:
+    - test:stable
+  script:
+    - cargo doc --workspace --all-features --color=always
+    - rm -rf public || true
+    - mkdir public
+    - cp -R target/doc/* public
+    - cp -R target/cov public/
+  artifacts:
+    paths:
+      - public
 
 publish:
   stage: deploy
