@@ -1,7 +1,6 @@
 stages:
   - build
   - test
-  - pages
   - deploy
 
 cache:
@@ -27,8 +26,23 @@ build:stable:
       - target/debug/
     expire_in: 1 day
 
+pages:
+  stage: build
+  only:
+    - master
+  script:
+    - cargo doc --workspace --all-features --color=always
+    - rm -rf public || true
+    - mkdir public
+    - cp -R target/doc/* public
+  artifacts:
+    paths:
+      - public
+
 test:stable:
   stage: test
+  needs:
+    - build:stable
   dependencies:
     - build:stable
   before_script:
@@ -47,24 +61,11 @@ test:stable:
     - COVERAGE=$(grep -Po 'covered":.*?[^\\]"' target/cov/index.js | grep "[0-9]*\.[0-9]" -o)
     - echo "Coverage:" $COVERAGE
 
-pages:
-  stage: pages
-  only:
-    - master
-  needs: ["test:stable"]
-  script:
-    - cargo doc --workspace --all-features --color=always
-    - rm -rf public || true
-    - mkdir public
-    - cp -R target/doc/* public
-  artifacts:
-    paths:
-      - public
-
 publish:
   stage: deploy
-  dependencies: ["test:stable"]
-  needs: ["test:stable"]
+  dependencies: []
+  needs:
+    - "test:stable"
   only:
     refs:
       - tags
