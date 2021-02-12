@@ -206,6 +206,21 @@ impl<T> CBox<[T]> {
 	}
 }
 
+impl<T> CBox<MaybeUninit<T>> {
+	/// Converts a `CBox` containing `MaybeUninit<T>` to `CBox<[T]>` by
+	/// assuming the content is in an initialized state.
+	///
+	/// # Safety
+	/// It is up to the caller to guarantee that the `MaybeUninit<T>` elements
+	/// really are in an initialized state. Calling this when the content is
+	/// not yet fully initialized causes undefined behavior.
+	pub unsafe fn assume_init(self) -> CBox<T> {
+		CBox::<T> (
+			NonNull::new_unchecked(CBox::into_raw(self) as *mut T)
+		)
+	}
+}
+
 impl<T> CBox<[MaybeUninit<T>]> {
 	/// Converts a `CBox` containing `[MaybeUninit<T>]` to `CBox<[T]>` by
 	/// assuming all the elements are in an initialized state.
