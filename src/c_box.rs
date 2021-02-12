@@ -14,7 +14,7 @@ use crate::error::{Error, ReturnCode};
 use crate::{Result, ExtResult};
 
 use std::convert::TryFrom;
-use std::ptr::NonNull;
+use std::ptr::{NonNull, drop_in_place};
 use std::cmp::Ordering;
 use std::ops::{Deref, DerefMut};
 use std::hash::{Hasher, Hash};
@@ -228,7 +228,14 @@ impl<T> CBox<[MaybeUninit<T>]> {
 /// Destructor using [`libc::free()`] to release the allocated memory
 impl<T: ?Sized> Drop for CBox<T> {
 	fn drop(&mut self) {
-		unsafe { free(self.0.as_ptr() as *mut c_void) };
+		let ptr = self.0.as_ptr();
+		// This is sound, as we drop and then release the memory for data we
+		// have the responsibility for. After this destructor nobody else
+		// should have a pointer to `self.0` anymore.
+		unsafe {
+			drop_in_place(ptr);
+			free(ptr as *mut c_void);
+		};
 	}
 }
 
