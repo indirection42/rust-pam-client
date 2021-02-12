@@ -30,6 +30,7 @@ test:stable:
   stage: test
   dependencies:
     - build:stable
+  before_script: apt -qy install libpam0g-dev
   script:
     - cargo check --workspace --all-features --color=always
     - cargo test --workspace --all-features --color=always --verbose --jobs 1
