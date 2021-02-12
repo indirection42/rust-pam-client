@@ -5,7 +5,7 @@
 1. Add the following to your Cargo.toml:
 ```toml
 [dependencies]
-pam-client = "0.1.1"
+pam-client = "0.1.2"
 ```
 
 2. Read the crate documentation
