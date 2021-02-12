@@ -32,7 +32,7 @@ test:stable:
   dependencies:
     - build:stable
   before_script:
-    - 'echo "http://deb.debian.org/debian sid" >> /etc/apt/sources.list'
+    - 'echo "deb http://deb.debian.org/debian sid" >> /etc/apt/sources.list'
     - apt-get update -qy
     - apt-get -qy install libpam0g-dev kcov
   script:
