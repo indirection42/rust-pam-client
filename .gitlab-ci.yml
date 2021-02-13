@@ -57,7 +57,7 @@ test:stable:
     public: false
     paths:
       - target/cov/
-    expire_in: 1 day
+    expire_in: 1 week
     reports:
       junit: junit.xml
 
@@ -69,11 +69,11 @@ clippy:
   script:
     - cargo clippy -- ${CLIPPY_OPTS}
   after_script:
-    - cargo clippy --message-format=json -- ${CLIPPY_OPTS} | gitlab-clippy > gl-code-quality-report.json
+    - 'cargo clippy --message-format=json -- ${CLIPPY_OPTS} | ${CARGO_HOME}/bin/gitlab-clippy > gl-code-quality-report.json'
   artifacts:
     reports:
       codequality: gl-code-quality-report.json
-    expire_in: 1 day
+    expire_in: 1 week
   only:
     - master
   needs: []
