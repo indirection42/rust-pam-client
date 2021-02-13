@@ -43,7 +43,7 @@ test:stable:
   script:
     - export RUSTFLAGS="-C link-dead-code -C inline-threshold=0"
     - cargo hack check --workspace --feature-powerset --no-dev-deps --color=always
-    - cargo test --workspace --all-features --verbose | rust2junit.py
+    - cargo test --workspace --all-features --verbose | ./rust2junit.py
     - kcov --verify
         --include-pattern=/rust-pam-client/src/
         --exclude-line='#[derive,pub struct'
