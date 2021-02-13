@@ -13,6 +13,7 @@ cache:
 variables:
   CARGO_INCREMENTAL: 0
   CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
+  CLIPPY_OPTS: -W clippy::pedantic -A clippy::must_use_candidate -A clippy::doc_markdown -A clippy::empty_enum -A clippy::module_name_repetitions -A clippy::missing_errors_doc
 
 default:
   image: rust:buster
@@ -59,6 +60,22 @@ test:stable:
     expire_in: 1 day
     reports:
       junit: junit.xml
+
+clippy:
+  stage: test
+  before_script:
+    - cargo install gitlab_clippy
+  script:
+    - cargo clippy -- ${CLIPPY_OPTS}
+  after_script:
+    - cargo clippy --message-format=json -- ${CLIPPY_OPTS} | gitlab-clippy > gl-code-quality-report.json
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.json
+    expire_in: 1 day
+  only:
+    - master
+  needs: []
 
 pages:
   stage: pages
