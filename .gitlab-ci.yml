@@ -64,6 +64,7 @@ test:stable:
 clippy:
   stage: test
   before_script:
+    - rustup component add clippy
     - cargo install gitlab_clippy
   script:
     - cargo clippy -- ${CLIPPY_OPTS}
