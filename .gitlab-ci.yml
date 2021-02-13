@@ -37,10 +37,13 @@ test:stable:
     - 'echo "deb http://deb.debian.org/debian/ sid main contrib" >> /etc/apt/sources.list'
     - apt-get update -qy
     - apt-get -qy install libpam0g-dev kcov
+    - cargo install cargo-hack
+    - wget https://grenz-bonn.de/rust2junit.py
+    - chmod +x rust2junit.py
   script:
     - export RUSTFLAGS="-C link-dead-code -C inline-threshold=0"
-    - cargo check --workspace --all-features --color=always
-    - cargo test --workspace --all-features --color=always --verbose --jobs 1
+    - cargo cargo hack check --workspace --feature-powerset --no-dev-deps --color=always
+    - cargo test --workspace --all-features --verbose | rust2junit.py
     - kcov --verify
         --include-pattern=/rust-pam-client/src/
         --exclude-line='#[derive,pub struct'
@@ -54,6 +57,8 @@ test:stable:
     paths:
       - target/cov/
     expire_in: 1 day
+    reports:
+      junit: junit.xml
 
 pages:
   stage: pages
