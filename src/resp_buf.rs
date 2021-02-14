@@ -39,7 +39,7 @@ impl ResponseBuffer {
 		if len <= 0 {
 			return Err(Error::try_from(ReturnCode::BUF_ERR).unwrap());
 		}
-
+		#[allow(clippy::cast_sign_loss)]
 		let buffer = CBox::<PamResponse>::try_new_zeroed_slice(len as usize)?;
 		Ok(Self { items: unsafe { buffer.assume_all_init() } })
 	}

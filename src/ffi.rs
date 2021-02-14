@@ -40,9 +40,14 @@ const fn map_conv_string(input: CString) -> Option<CString> {
 ///
 /// Version for Linux, NetBSD and similar platforms that interpret
 /// `**PamMessage` as "array of pointers to PamMessage structs".
+///
+/// # Panics
+/// Panics if `num_msg` is negative or `msg` is null
 #[cfg(not(target_os="solaris"))]
 #[inline]
+#[allow(clippy::cast_sign_loss)]
 fn msg_to_slice(msg: &*mut *mut PamMessage, num_msg: c_int) -> &[&PamMessage] {
+	assert!(num_msg >= 0 || msg.is_null());
 	// This is sound, as [&PamMessage] has the same layout as "array of ptrs
 	// to PamMessage structs" and msgs lives at least until we return.
 	unsafe { slice::from_raw_parts((*msg) as *const &PamMessage, num_msg as usize) }
@@ -52,12 +57,31 @@ fn msg_to_slice(msg: &*mut *mut PamMessage, num_msg: c_int) -> &[&PamMessage] {
 ///
 /// Version for Solaris and similar platforms that interpret `**PamMessage`
 /// as "pointer to array of PamMessage structs".
+///
+/// # Panics
+/// Panics if `num_msg` is negative or `msg` is null
 #[cfg(target_os="solaris")]
 #[inline]
+#[allow(clippy::cast_sign_loss)]
 fn msg_to_slice(msg: &*mut *mut PamMessage, num_msg: c_int) -> &'static [PamMessage] {
+	assert!(num_msg >= 0 || msg.is_null());
 	// This is sound, as *[PamMessage] has the same layout as "ptr to array
 	// of PamMessage structs" and msgs lives at least until we return.
 	unsafe { slice::from_raw_parts((**msg) as *const PamMessage, num_msg as usize) }
+}
+
+/// Maximum supported message number (for Linux and similar)
+#[cfg(not(target_os="solaris"))]
+#[allow(clippy::cast_possible_wrap)]
+const fn max_msg_num() -> isize {
+	isize::MAX / size_of::<* const PamMessage>() as isize
+}
+
+/// Maximum supported message number (for Solaris)
+#[cfg(target_os="solaris")]
+#[allow(clippy::cast_possible_wrap)]
+const fn max_msg_num() -> isize {
+	isize::MAX / size_of::<PamMessage>() as isize
 }
 
 /// Conversation function C library callback.
@@ -71,7 +95,7 @@ pub(crate) extern "C" fn pam_converse<T: ConversationHandler>(
 	out_resp: *mut *mut PamResponse,
 	appdata_ptr: *mut c_void
 ) -> c_int {
-	const MAX_MSG_NUM: isize = isize::MAX / size_of::<* const PamMessage>() as isize;
+	const MAX_MSG_NUM: isize = max_msg_num();
 
 	// Check for null pointers
 	if msg.is_null() || out_resp.is_null() || appdata_ptr.is_null() {
