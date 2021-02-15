@@ -62,10 +62,33 @@ pub trait ConversationHandler {
 	///
 	/// The default implementation calls `prompt_echo_on` and maps any answer
 	/// starting with 'y' or 'j' to "yes" and everything else to "no".
+	///
+	/// # Errors
+	/// You should return one of the following error codes on failure.
+	/// - [`ErrorCode::CONV_ERR`]: Conversation failure.
+	/// - [`ErrorCode::BUF_ERR`]: Memory allocation error.
+	/// - [`ErrorCode::CONV_AGAIN`]: no result yet, the PAM library should
+	///   pass [`ErrorCode::INCOMPLETE`] to the application and let it
+	///   try again later.
 	fn radio_prompt(&mut self, prompt: &CStr) -> Result<bool, ErrorCode> {
 		let prompt = [ prompt.to_bytes(), b" [y/N]\0" ].concat();
 
 		self.prompt_echo_on(CStr::from_bytes_with_nul(&prompt).unwrap())
 			.map(|s| matches!(s.as_bytes_with_nul()[0], b'Y' | b'y' | b'j' | b'J'))
+	}
+
+	/// Exchanges binary data (Linux specific, experimental).
+	///
+	/// The default implementation returns a conversation error.
+	///
+	/// # Errors
+	/// You should return one of the following error codes on failure.
+	/// - [`ErrorCode::CONV_ERR`]: Conversation failure.
+	/// - [`ErrorCode::BUF_ERR`]: Memory allocation error.
+	/// - [`ErrorCode::CONV_AGAIN`]: no result yet, the PAM library should
+	///   pass [`ErrorCode::INCOMPLETE`] to the application and let it
+	///   try again later.
+	fn binary_prompt(&mut self, _type: u8, _data: &[u8]) -> Result<(u8, Vec<u8>), ErrorCode> {
+		Err(ErrorCode::CONV_ERR)
 	}
 }

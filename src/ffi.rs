@@ -16,7 +16,7 @@ use crate::PAM_SUCCESS;
 use std::mem::size_of;
 use std::slice;
 use std::ffi::{CStr, CString};
-use libc::{c_int, c_uint, c_void};
+use libc::{c_char, c_int, c_uint, c_void};
 use pam_sys::{pam_response as PamResponse, pam_conv as PamConversation, pam_message as PamMessage};
 use pam_sys::PAM_BUF_ERR;
 
@@ -86,6 +86,59 @@ const fn max_msg_num() -> isize {
 	isize::MAX / size_of::<PamMessage>() as isize
 }
 
+/// Interprets the message content as a null-terminated string
+///
+/// NULL pointers are converted into empty string as a safety measure.
+///
+/// # Safety
+/// This is sound as long as the message type implies a non-binary message
+/// and the PAM modules play by the rules.
+unsafe fn msg_content_as_cstr(msg: &*const c_char) -> &CStr {
+	if msg.is_null() {
+		CStr::from_bytes_with_nul_unchecked(b"\0")
+	} else {
+		CStr::from_ptr(*msg)
+	}
+}
+
+/// Interprets the message content as a null-terminated string
+///
+/// NULL pointers are converted into empty string as a safety measure.
+///
+/// # Safety
+/// This is sound as long as the message type implies a non-binary message
+/// and the PAM modules play by the rules.
+unsafe fn msg_content_to_cstr(msg: &*const c_char) -> &CStr {
+	if msg.is_null() {
+		CStr::from_bytes_with_nul_unchecked(b"\0")
+	} else {
+		CStr::from_ptr(*msg)
+	}
+}
+
+/// Interprets the message content as a binary pseudo-struct
+///
+/// NULL pointers are converted into empty data as a safety measure.
+///
+/// # Safety
+/// This is sound as long as the message type implies a binary message
+/// and the PAM modules play by the rules.
+unsafe fn msg_content_to_bin(msg: &*const c_char) -> (u8, &[u8]) {
+	if msg.is_null() {
+		(0, &[])
+	} else {
+		// Decode length and data
+		// Sound as long as the PAM modules set the length correctly
+		let len = (*msg as u32) << 24
+			| (*msg.add(1) as u32) << 16
+			| (*msg.add(2) as u32) << 8
+			| (*msg.add(3) as u32);
+		let type_ = *msg.add(4) as u8;
+		let data = slice::from_raw_parts(msg.add(5) as *const u8, len as usize);
+		(type_, data)
+	}
+}
+
 /// Conversation function C library callback.
 ///
 /// Will be called by C code when a conversation is requested. Does sanity
@@ -126,31 +179,54 @@ pub(crate) unsafe extern "C" fn pam_converse<T: ConversationHandler>(
 
 	// Call conversation handler for each message
 	for (i, message) in messages.iter().enumerate() {
-		// Extra safeguard against stray NULL pointers
-		// This is sound as long as the PAM modules play by the rules
-		// and the correct `msg_to_slice` implementation was selected
-		// by the build process.
-		let text = if message.msg.is_null() {
-			CStr::from_bytes_with_nul_unchecked(b"\0")
-		} else {
-			CStr::from_ptr(message.msg)
-		};
-		
-		// Delegate to the correct handler method based on `msg_style`
-		let result = match message.msg_style as c_uint {
-			pam_sys::PAM_PROMPT_ECHO_ON => handler.prompt_echo_on(text).map(map_conv_string),
-			pam_sys::PAM_PROMPT_ECHO_OFF => handler.prompt_echo_off(text).map(map_conv_string),
-			pam_sys::PAM_TEXT_INFO => { handler.text_info(text); Ok(None) },
-			pam_sys::PAM_ERROR_MSG => { handler.error_msg(text); Ok(None) },
+		match message.msg_style as c_uint {
+			// Special case: experimental binary messages (Linux)
 			#[cfg(target_os="linux")]
-			pam_sys::PAM_RADIO_TYPE => { handler.radio_prompt(text).map(|b| if b { CString::new("yes").ok() } else { CString::new("no").ok() }) },
-			_ => Err(ErrorCode::CONV_ERR),
-		};
+			pam_sys::PAM_BINARY_PROMPT => {
+				let (type_, data) = msg_content_to_bin(&message.msg);
+				let result = handler.binary_prompt(type_, data);
+				match result {
+					Ok(response) => responses.put_binary(i, response.0, &response.1),
+					Err(code) => return code.repr()
+				}
+			}
+			// All other cases
+			_ => {
+				// Delegate to the correct handler method based on `msg_style`
+				let result = match message.msg_style as c_uint {
+					pam_sys::PAM_PROMPT_ECHO_ON => {
+						let text = msg_content_as_cstr(&message.msg);
+						handler.prompt_echo_on(text).map(map_conv_string)
+					},
+					pam_sys::PAM_PROMPT_ECHO_OFF => {
+						let text = msg_content_as_cstr(&message.msg);
+						handler.prompt_echo_off(text).map(map_conv_string)
+					},
+					pam_sys::PAM_TEXT_INFO => {
+						let text = msg_content_as_cstr(&message.msg);
+						handler.text_info(text);
+						Ok(None)
+					},
+					pam_sys::PAM_ERROR_MSG => {
+						let text = msg_content_as_cstr(&message.msg);
+						handler.error_msg(text);
+						Ok(None)
+					},
+					#[cfg(target_os="linux")]
+					pam_sys::PAM_RADIO_TYPE => {
+						let text = msg_content_to_cstr(&message.msg);
+						handler.radio_prompt(text)
+							.map(|b| if b { CString::new("yes").ok() } else { CString::new("no").ok() })
+					},
+					_ => Err(ErrorCode::CONV_ERR),
+				};
 
-		// Process response and bail out on errors
-		match result {
-			Ok(response) => responses.put(i, response),
-			Err(code) => return code.repr()
+				// Process response and bail out on errors
+				match result {
+					Ok(response) => responses.put(i, response),
+					Err(code) => return code.repr()
+				}
+			}
 		}
 	}
 
