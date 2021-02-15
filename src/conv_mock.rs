@@ -11,7 +11,7 @@
 use std::iter::FusedIterator;
 use std::ffi::{CStr, CString};
 use std::vec;
-use crate::error::ReturnCode;
+use crate::error::ErrorCode;
 use super::ConversationHandler;
 
 /// Elements in [`Conversation::log`]
@@ -110,12 +110,12 @@ impl ConversationHandler for Conversation {
 		}
 	}
 
-	fn prompt_echo_on(&mut self, _msg: &CStr) -> Result<CString, ReturnCode> {
-		CString::new(self.username.clone()).map_err(|_| ReturnCode::CONV_ERR)
+	fn prompt_echo_on(&mut self, _msg: &CStr) -> Result<CString, ErrorCode> {
+		CString::new(self.username.clone()).map_err(|_| ErrorCode::CONV_ERR)
 	}
 
-	fn prompt_echo_off(&mut self, _msg: &CStr) -> Result<CString, ReturnCode> {
-		CString::new(self.password.clone()).map_err(|_| ReturnCode::CONV_ERR)
+	fn prompt_echo_off(&mut self, _msg: &CStr) -> Result<CString, ErrorCode> {
+		CString::new(self.password.clone()).map_err(|_| ErrorCode::CONV_ERR)
 	}
 
 	fn text_info(&mut self, msg: &CStr) {

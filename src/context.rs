@@ -8,33 +8,32 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.            *
  ***********************************************************************/
 
-use crate::ConversationHandler;
+use crate::{ConversationHandler, char_ptr_to_str};
 use crate::ffi::to_pam_conv;
-use crate::error::{ReturnCode, Error};
+use crate::error::{ErrorCode, Error};
 use crate::session::{Session, SessionToken};
 use crate::env_list::EnvList;
 extern crate libc;
 extern crate pam_sys;
 
-use crate::{Result, ExtResult, Flag};
+use crate::{Result, ExtResult, Flag, PAM_SUCCESS};
 
 use std::ffi::{CStr, CString};
 use std::{ptr, slice};
-use std::convert::TryFrom;
 use std::cell::Cell;
 use std::mem::take;
 use libc::{c_char, c_int, c_void};
-use pam_sys::types::{PamItemType, PamHandle};
-use pam_sys::wrapped::{start, end, get_item, set_item, setcred, authenticate, acct_mgmt, chauthtok, open_session, close_session, getenvlist, getenv, putenv};
+use pam_sys::pam_handle as PamHandle;
+use pam_sys::{pam_start, pam_end, pam_get_item, pam_set_item, pam_setcred, pam_authenticate, pam_acct_mgmt, pam_chauthtok, pam_open_session, pam_close_session, pam_getenvlist, pam_getenv, pam_putenv};
 
 /// Internal: Builds getters/setters for string-typed PAM items.
 macro_rules! impl_pam_str_item {
 	($name:ident, $set_name:ident, $item_type:expr$(, $doc:literal$(, $extdoc:literal)?)?$(,)?) => {
 		$(#[doc = "Returns "]#[doc = $doc]$(#[doc = "\n\n"]#[doc = $extdoc])?)?
 		pub fn $name(&self) -> Result<String> {
-			let ptr = self.get_item($item_type)?;
+			let ptr = self.get_item($item_type as c_int)?;
 			if ptr.is_null() {
-				return Err(Error::new(self.handle(), ReturnCode::PERM_DENIED));
+				return Err(Error::new(self.handle(), ErrorCode::PERM_DENIED));
 			}
 			let string = unsafe { CStr::from_ptr(ptr as *const _) }.to_string_lossy().into_owned();
 			return Ok(string);
@@ -43,10 +42,10 @@ macro_rules! impl_pam_str_item {
 		$(#[doc = "Sets "]#[doc = $doc])?
 		pub fn $set_name(&mut self, value: Option<&str>) -> Result<()> {
 			match value {
-				None => unsafe { self.set_item($item_type, ptr::null()) },
+				None => unsafe { self.set_item($item_type as c_int, ptr::null()) },
 				Some(string) => {
-					let cstring = CString::new(string).map_err(|_| Error::new(self.handle(), ReturnCode::BUF_ERR))?;
-					unsafe { self.set_item($item_type, cstring.as_ptr() as *const _) }
+					let cstring = CString::new(string).map_err(|_| Error::new(self.handle(), ErrorCode::BUF_ERR))?;
+					unsafe { self.set_item($item_type as c_int, cstring.as_ptr() as *const _) }
 				}
 			}
 		}
@@ -55,10 +54,9 @@ macro_rules! impl_pam_str_item {
 
 /// Special struct for the `PAM_XAUTHDATA` pam item
 ///
-/// Differs from [`pam_sys::types::PamXAuthData`] by using const pointers
-/// as `pam_set_item` makes a copy of the data and never mutates through
-/// the pointers and `pam_get_item` by API contract states that returned
-/// data should not be modified.
+/// Uses const pointers as `pam_set_item` makes a copy of the data and
+/// never mutates through the pointers and `pam_get_item` by API contract
+/// states that returned data should not be modified.
 #[cfg(any(target_os="linux",doc))]
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -82,7 +80,7 @@ pub struct Context<ConvT> where ConvT: ConversationHandler {
 	handle: Cell<*mut PamHandle>,
 	// Needs to be boxed, as we give a long-living pointer to it to C code.
 	conversation: Box<ConvT>,
-	last_status: Cell<ReturnCode>
+	last_status: Cell<c_int>
 }
 
 impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
@@ -104,9 +102,10 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	///
 	/// # Errors
 	/// Expected error codes include:
-	/// - `ReturnCode::ABORT` – General failure
-	/// - `ReturnCode::BUF_ERR` – Memory allocation failure
-	/// - `ReturnCode::SYSTEM_ERR` – Other system error
+	/// - `ErrorCode::ABORT` – General failure
+	/// - `ErrorCode::BUF_ERR` – Memory allocation failure or null byte in
+	///   parameter.
+	/// - `ErrorCode::SYSTEM_ERR` – Other system error
 	#[rustversion::attr(since(1.48), doc(alias = "pam_start"))]
 	pub fn new(service: &str, username: Option<&str>, conversation: ConvT) -> Result<Self> {
 		// Wrap `conversation` in a box and delegate to `from_boxed_conv`
@@ -120,26 +119,34 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	pub fn from_boxed_conv(service: &str, username: Option<&str>, mut boxed_conv: Box<ConvT>) -> Result<Self> {
 		let mut handle: *mut PamHandle = ptr::null_mut();
 
+		let c_service = CString::new(service).map_err(|_| Error::from(ErrorCode::BUF_ERR))?;
+		let c_username = match username {
+			None => None,
+			Some(name) => Some(CString::new(name).map_err(|_| Error::from(ErrorCode::BUF_ERR))?),
+		};
+		
+		dbg!(&c_service, &c_username);
+
 		// Create callback struct for C code
 		let pam_conv = to_pam_conv(&mut boxed_conv);
 
 		// Start the PAM context
-		match start(service, username, &pam_conv, &mut handle) {
-			ReturnCode::SUCCESS => {
+		match unsafe { pam_start(c_service.as_ptr(), c_username.as_ref().map_or(ptr::null(), |s| s.as_ptr()), &pam_conv, &mut handle) } {
+			PAM_SUCCESS => {
 				// Should not happen, but for safetys sake check for a null
 				// pointer on success.
 				if handle.is_null() {
-					Err(Error::try_from(ReturnCode::ABORT).unwrap())
+					Err(ErrorCode::ABORT.into())
 				} else {
 					boxed_conv.init(username);
 					Ok(Self {
 						handle: Cell::new(handle),
 						conversation: boxed_conv,
-						last_status: Cell::new(ReturnCode::SUCCESS),
+						last_status: Cell::new(PAM_SUCCESS),
 					})
 				}
 			},
-			code => Err(Error::try_from(code).unwrap())
+			code => Err(ErrorCode::from_repr(code).unwrap_or(ErrorCode::ABORT).into())
 		}
 	}
 
@@ -155,13 +162,13 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 		unsafe { &mut **ptr }
 	}
 
-	/// Internal: Wraps a `ReturnCode` into a `Result` and sets `last_status`.
+	/// Internal: Wraps a `ErrorCode` into a `Result` and sets `last_status`.
 	#[inline]
-	pub(crate) fn wrap_pam_return(&self, status: ReturnCode) -> Result<()> {
+	pub(crate) fn wrap_pam_return(&self, status: c_int) -> Result<()> {
 		self.last_status.set(status);
 		match status {
-			ReturnCode::SUCCESS => Ok(()),
-			code => Err(Error::new(self.handle(), code))
+			PAM_SUCCESS => Ok(()),
+			code => Err(Error::new(self.handle(), ErrorCode::from_repr(code).unwrap_or(ErrorCode::ABORT)))
 		}
 	}
 
@@ -186,9 +193,9 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// - `BUF_ERR` – Memory buffer error
 	/// - `PERM_DENIED` – The value was NULL/None
 	#[rustversion::attr(since(1.48), doc(alias = "pam_get_item"))]
-	pub fn get_item(&self, item_type: PamItemType) -> Result<*const c_void> {
+	pub fn get_item(&self, item_type: c_int) -> Result<*const c_void> {
 		let mut result: *const c_void = ptr::null();
-		self.wrap_pam_return(get_item(self.handle(), item_type, &mut result))?;
+		self.wrap_pam_return(unsafe { pam_get_item(self.handle(), item_type, &mut result) })?;
 		Ok(result)
 	}
 
@@ -206,45 +213,45 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// # Safety
 	/// This method is unsafe. You must guarantee that the data pointed to by
 	/// `value` matches the type the PAM library expects. E.g. a null terminated
-	/// `*const c_char` for [`PamItemType::SERVICE`] or `*const PamXAuthData` for
-	/// [`PamItemType::XAUTHDATA`].
+	/// `*const c_char` for [`PAM_SERVICE`] or `*const PamXAuthData` for
+	/// [`PAM_XAUTHDATA`].
 	#[rustversion::attr(since(1.48), doc(alias = "pam_set_item"))]
-	pub unsafe fn set_item(&mut self, item_type: PamItemType, value: *const c_void) -> Result<()> {
-		self.wrap_pam_return(set_item(self.handle(), item_type, &*value))
+	pub unsafe fn set_item(&mut self, item_type: c_int, value: *const c_void) -> Result<()> {
+		self.wrap_pam_return(pam_set_item(self.handle(), item_type, &*value))
 	}
 
-	impl_pam_str_item!(service, set_service, PamItemType::SERVICE, "the service name");
-	impl_pam_str_item!(user, set_user, PamItemType::USER, "the username of the entity under whose identity service will be given",
+	impl_pam_str_item!(service, set_service, pam_sys::PAM_SERVICE, "the service name");
+	impl_pam_str_item!(user, set_user, pam_sys::PAM_USER, "the username of the entity under whose identity service will be given",
 		"This value can be mapped by any module in the PAM stack, so don't assume it stays unchanged after calling other methods on `Self`.");
-	impl_pam_str_item!(user_prompt, set_user_prompt, PamItemType::USER_PROMPT, "the string used when prompting for a user's name");
-	impl_pam_str_item!(tty, set_tty, PamItemType::TTY, "the terminal name");
-	impl_pam_str_item!(ruser, set_ruser, PamItemType::RUSER, "the requesting user name");
-	impl_pam_str_item!(rhost, set_rhost, PamItemType::RHOST, "the requesting hostname");
+	impl_pam_str_item!(user_prompt, set_user_prompt, pam_sys::PAM_USER_PROMPT, "the string used when prompting for a user's name");
+	impl_pam_str_item!(tty, set_tty, pam_sys::PAM_TTY, "the terminal name");
+	impl_pam_str_item!(ruser, set_ruser, pam_sys::PAM_RUSER, "the requesting user name");
+	impl_pam_str_item!(rhost, set_rhost, pam_sys::PAM_RHOST, "the requesting hostname");
 	#[cfg(any(target_os="linux",doc))]
-	impl_pam_str_item!(authtok_type, set_authtok_type, PamItemType::AUTHTOK_TYPE, "the default password type in the prompt (Linux specific)", "E.g. \"UNIX\" for \"Enter UNIX password:\"");
+	impl_pam_str_item!(authtok_type, set_authtok_type, pam_sys::PAM_AUTHTOK_TYPE, "the default password type in the prompt (Linux specific)", "E.g. \"UNIX\" for \"Enter UNIX password:\"");
 	#[cfg(any(target_os="linux",doc))]
-	impl_pam_str_item!(xdisplay, set_xdisplay, PamItemType::XDISPLAY, "the name of the X display (Linux specific)");
+	impl_pam_str_item!(xdisplay, set_xdisplay, pam_sys::PAM_XDISPLAY, "the name of the X display (Linux specific)");
 
 	/// Returns X authentication data as (name, value) pair (Linux specific).
 	#[cfg(any(target_os="linux",doc))]
 	pub fn xauthdata(&self) -> Result<(&CStr, &[u8])> {
-		let ptr = self.get_item(PamItemType::XAUTHDATA)? as *const XAuthData;
+		let ptr = self.get_item(pam_sys::PAM_XAUTHDATA as c_int)? as *const XAuthData;
 		if ptr.is_null() {
-			return Err(Error::new(self.handle(), ReturnCode::PERM_DENIED));
+			return Err(Error::new(self.handle(), ErrorCode::PERM_DENIED));
 		}
 		let data = unsafe { &*ptr };
 
 		// Safety checks: validate the length are non-negative and that
 		// the pointers are non-null
 		if data.namelen < 0 || data.datalen < 0 || data.name.is_null() || data.data.is_null() {
-			return Err(Error::new(self.handle(), ReturnCode::BUF_ERR))
+			return Err(Error::new(self.handle(), ErrorCode::BUF_ERR))
 		}
 
 		#[allow(clippy::cast_sign_loss)]
 		Ok((
 			CStr::from_bytes_with_nul(
 				unsafe { slice::from_raw_parts(data.name as *const u8, data.namelen as usize + 1) }
-			).map_err(|_| Error::new(self.handle(), ReturnCode::BUF_ERR))?,
+			).map_err(|_| Error::new(self.handle(), ErrorCode::BUF_ERR))?,
 			unsafe { slice::from_raw_parts(data.data as *const u8, data.datalen as usize) }
 		))
 	}
@@ -258,12 +265,12 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	#[cfg(any(target_os="linux",doc))]
 	pub fn set_xauthdata(&mut self, value: Option<(&CStr, &[u8])>) -> Result<()> {
 		match value {
-			None => unsafe { self.set_item(PamItemType::XAUTHDATA, ptr::null()) },
+			None => unsafe { self.set_item(pam_sys::PAM_XAUTHDATA as c_int, ptr::null()) },
 			Some((name, data)) => {
 				let name_bytes = name.to_bytes_with_nul();
 
 				if name_bytes.len() > i32::MAX as usize || data.len() > i32::MAX as usize {
-					return Err(Error::new(self.handle(), ReturnCode::BUF_ERR))
+					return Err(Error::new(self.handle(), ErrorCode::BUF_ERR))
 				}
 
 				#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
@@ -273,7 +280,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 					datalen: data.len() as i32,
 					data: data.as_ptr() as *const _
 				};
-				unsafe { self.set_item(PamItemType::XAUTHDATA, &xauthdata as *const _ as *const c_void) }
+				unsafe { self.set_item(pam_sys::PAM_XAUTHDATA as c_int, &xauthdata as *const _ as *const c_void) }
 			}
 		}
 	}
@@ -284,7 +291,11 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// item with key `name` and returns the value, if it exists.
 	#[rustversion::attr(since(1.48), doc(alias = "pam_getenv"))]
 	pub fn getenv<'a>(&'a self, name: &str) -> Option<&'a str> {
-		getenv(self.handle(), name)
+		let c_name = match CString::new(name) {
+			Err(_) => return None,
+			Ok(s) => s
+		};
+		char_ptr_to_str(unsafe { pam_getenv(self.handle(), c_name.as_ptr()) })
 	}
 
 	/// Sets or unsets a PAM environment variable.
@@ -298,7 +309,8 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// - *NAME* – Delete a variable, if it exists.
 	#[rustversion::attr(since(1.48), doc(alias = "pam_putenv"))]
 	pub fn putenv(&mut self, name_value: &str) -> Result<()> {
-		self.wrap_pam_return(putenv(self.handle(), name_value))
+		let c_name_value = CString::new(name_value).map_err(|_| Error::from(ErrorCode::BUF_ERR))?;
+		self.wrap_pam_return(unsafe { pam_putenv(self.handle(), c_name_value.as_ptr()) })
 	}
 
 	/// Returns a copy of the PAM environment in this context.
@@ -312,7 +324,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// `nix::unistd::execve`.
 	#[rustversion::attr(since(1.48), doc(alias = "pam_getenvlist"))]
 	pub fn envlist(&self) -> EnvList {
-		unsafe { EnvList::new(getenvlist(self.handle()) as *mut *mut _) }
+		unsafe { EnvList::new(pam_getenvlist(self.handle()) as *mut *mut _) }
 	}
 
 	/// Authenticates a user.
@@ -342,7 +354,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	///   again after the asynchronous conversation finished.
 	#[rustversion::attr(since(1.48), doc(alias = "pam_authenticate"))]
 	pub fn authenticate(&mut self, flags: Flag) -> Result<()> {
-		self.wrap_pam_return(authenticate(self.handle(), flags))
+		self.wrap_pam_return(unsafe { pam_authenticate(self.handle(), flags.bits()) })
 	}
 
 	/// Validates user account authorization.
@@ -367,7 +379,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	///   again after the asynchronous conversation finished.
 	#[rustversion::attr(since(1.48), doc(alias = "pam_acct_mgmt"))]
 	pub fn acct_mgmt(&mut self, flags: Flag) -> Result<()> {
-		self.wrap_pam_return(acct_mgmt(self.handle(), flags))
+		self.wrap_pam_return(unsafe { pam_acct_mgmt(self.handle(), flags.bits()) })
 	}
 
 	/// Fully reinitializes the user's credentials (if established).
@@ -377,8 +389,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// lockscreen applications to refresh the credentials of the desktop
 	/// session.
 	///
-	/// Because of limitations in [`pam_sys`] the flags are currently ignored.
-	/// Use [`Flag::NONE`] or [`Flag::SILENT`].
+	/// Relevant `flags` are [`Flag::NONE`] and [`Flag::SILENT`].
 	///
 	/// # Errors
 	/// Expected error codes include:
@@ -387,8 +398,8 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// - `CRED_UNAVAIL` – Failed to retrieve credentials
 	/// - `SYSTEM_ERR` – Other system error
 	/// - `USER_UNKNOWN` – User not known
-	pub fn reinitialize_credentials(&mut self, _flags: Flag) -> Result<()> {
-		self.wrap_pam_return(setcred(self.handle(), Flag::REINITIALIZE_CRED/*|flags*/))
+	pub fn reinitialize_credentials(&mut self, flags: Flag) -> Result<()> {
+		self.wrap_pam_return(unsafe { pam_setcred(self.handle(), (Flag::REINITIALIZE_CRED|flags).bits()) })
 	}
 
 	/// Changes a users password.
@@ -415,7 +426,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	///   again after the asynchronous conversation finished.
 	#[rustversion::attr(since(1.48), doc(alias = "pam_chauthtok"))]
 	pub fn chauthtok(&mut self, flags: Flag) -> Result<()> {
-		self.wrap_pam_return(chauthtok(self.handle(), flags))
+		self.wrap_pam_return(unsafe { pam_chauthtok(self.handle(), flags.bits()) })
 	}
 
 	/// Sets up a user session.
@@ -450,10 +461,10 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// [authorized]: acct_mgmt()
 	#[rustversion::attr(since(1.48), doc(alias = "pam_open_session"))]
 	pub fn open_session(&mut self, flags: Flag) -> Result<Session<ConvT>> {
-		self.wrap_pam_return(setcred(self.handle(), Flag::ESTABLISH_CRED/*|flags*/))?;
+		self.wrap_pam_return(unsafe { pam_setcred(self.handle(), (Flag::ESTABLISH_CRED|flags).bits()) })?;
 
-		if let Err(e) = self.wrap_pam_return(open_session(self.handle(), flags)) {
-			let _ = self.wrap_pam_return(setcred(self.handle(), Flag::DELETE_CRED/*|flags*/));
+		if let Err(e) = self.wrap_pam_return(unsafe { pam_open_session(self.handle(), flags.bits()) }) {
+			let _ = self.wrap_pam_return(unsafe { pam_setcred(self.handle(), (Flag::DELETE_CRED|flags).bits()) });
 			return Err(e);
 		}
 
@@ -461,9 +472,9 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 		// to circumvent different assumptions of PAM modules about when
 		// `setcred` is called, as the documentations of different PAM
 		// implementations differ. (OpenSSH does something similar too).
-		if let Err(e) = self.wrap_pam_return(setcred(self.handle(), Flag::REINITIALIZE_CRED/*|flags*/)) {
-			let _ = self.wrap_pam_return(close_session(self.handle(), flags));
-			let _ = self.wrap_pam_return(setcred(self.handle(), Flag::DELETE_CRED/*|flags*/));
+		if let Err(e) = self.wrap_pam_return(unsafe { pam_setcred(self.handle(), (Flag::REINITIALIZE_CRED|flags).bits()) }) {
+			let _ = self.wrap_pam_return(unsafe { pam_close_session(self.handle(), flags.bits()) });
+			let _ = self.wrap_pam_return(unsafe { pam_setcred(self.handle(), (Flag::DELETE_CRED|flags).bits()) });
 			return Err(e);
 		}
 
@@ -480,8 +491,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	///
 	/// Depending on the platform this use case may not be fully supported.
 	///
-	/// Because of limitations in [`pam_sys`] the flags are currently ignored.
-	/// Use [`Flag::NONE`] or [`Flag::SILENT`].
+	/// Relevant `flags` are [`Flag::NONE`] and [`Flag::SILENT`].
 	///
 	/// # Errors
 	/// Expected error codes include:
@@ -493,8 +503,8 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	///
 	/// [authenticated]: Self::authenticate()
 	/// [authorized]: Self::acct_mgmt()
-	pub fn open_pseudo_session(&mut self, _flags: Flag) -> Result<Session<ConvT>> {
-		self.wrap_pam_return(setcred(self.handle(), Flag::ESTABLISH_CRED/*|flags*/))?;
+	pub fn open_pseudo_session(&mut self, flags: Flag) -> Result<Session<ConvT>> {
+		self.wrap_pam_return(unsafe { pam_setcred(self.handle(), (Flag::ESTABLISH_CRED|flags).bits()) })?;
 
 		Ok(Session::new(self, false))
 	}
@@ -535,7 +545,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler + Default {
 		let username = match self.user() {
 			Ok(u) => Some(u),
 			Err(e) => {
-				if e.code() != ReturnCode::PERM_DENIED {
+				if e.code() != ErrorCode::PERM_DENIED {
 					return Err(e.into_with_payload((self, new_handler)))
 				}
 				None
@@ -543,7 +553,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler + Default {
 		};
 		// Create callback struct for C code
 		let pam_conv = to_pam_conv(&mut new_handler);
-		if let Err(e) = unsafe { self.set_item(PamItemType::CONV, &pam_conv as *const _ as *const c_void) } {
+		if let Err(e) = unsafe { self.set_item(pam_sys::PAM_CONV as c_int, &pam_conv as *const _ as *const c_void) } {
 			Err(e.into_with_payload((self, new_handler)))
 		} else {
 			// Initialize handler
@@ -553,7 +563,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler + Default {
 				Context::<T> {
 					handle: Cell::new(self.handle.replace(ptr::null_mut())),
 					conversation: new_handler,
-					last_status: Cell::new(self.last_status.replace(ReturnCode::SUCCESS))
+					last_status: Cell::new(self.last_status.replace(PAM_SUCCESS))
 				},
 				take(&mut self.conversation)
 			))
@@ -565,7 +575,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler + Default {
 impl<ConvT> Drop for Context<ConvT> where ConvT: ConversationHandler {
 	#[rustversion::attr(since(1.48), doc(alias = "pam_end"))]
 	fn drop(&mut self) {
-		end(self.handle(), self.last_status.get());
+		unsafe { pam_end(self.handle(), self.last_status.get()) };
 	}
 }
 
@@ -614,7 +624,7 @@ mod tests {
 			assert_eq!(resultdata, &xauthdata);
 		};
 		// Check getting an unaccessible item
-		assert!(context.get_item(PamItemType::AUTHTOK).is_err());
+		assert!(context.get_item(pam_sys::PAM_AUTHTOK as c_int).is_err());
 		// Check environment setting/getting
 		context.putenv("TEST=1").unwrap();
 		context.putenv("TEST2=2").unwrap();

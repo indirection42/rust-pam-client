@@ -126,17 +126,97 @@ pub mod conv_mock;
 pub mod conv_null;
 pub mod env_list;
 
+#[macro_use]
+extern crate bitflags;
+use libc::{c_int, c_char};
+use std::ffi::CStr;
+
 pub use context::Context;
 pub use conversation::ConversationHandler;
 pub use session::{Session, SessionToken};
 pub use error::{Error, ErrorWith};
-#[doc(no_inline)]
-pub use pam_sys::types::PamReturnCode as ReturnCode;
-#[doc(no_inline)]
-pub use pam_sys::types::PamFlag as Flag;
+
+use enum_repr::EnumRepr;
+use pam_sys::*;
+
+fn char_ptr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
+	if ptr.is_null() {
+		None
+	} else {
+		let cstr = unsafe { CStr::from_ptr(ptr) };
+		match cstr.to_str() {
+			Err(_) => None,
+			Ok(s) => Some(s),
+		}
+	}
+}
+
+#[repr(transparent)]
+bitflags! {
+	pub struct Flag: c_int {
+		/// Don't generate any messages
+		const SILENT = PAM_SILENT as c_int;
+		/// Fail with `AUTH_ERROR` if the user has a null authentication token.
+		const DISALLOW_NULL_AUTHTOK = PAM_DISALLOW_NULL_AUTHTOK as c_int;
+		/// Only update passwords that have aged.
+		const CHANGE_EXPIRED_AUTHTOK = PAM_CHANGE_EXPIRED_AUTHTOK as c_int;
+		/// Set user credentials.
+		#[doc(hidden)]
+		const ESTABLISH_CRED = PAM_ESTABLISH_CRED as c_int;
+		/// Delete user credentials.
+		#[doc(hidden)]
+		const DELETE_CRED = PAM_DELETE_CRED as c_int;
+		/// Reinitialize user credentials.
+		#[doc(hidden)]
+		const REINITIALIZE_CRED = PAM_REINITIALIZE_CRED as c_int;
+		/// Extend lifetime of user credentials.
+		#[doc(hidden)]
+		const REFRESH_CRED = PAM_REFRESH_CRED as c_int;
+	}
+}
+
+impl Flag {
+	pub const NONE: Flag = Flag { bits: 0 };
+}
+
+#[allow(non_camel_case_types)]
+#[EnumRepr(type = "c_int")]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ErrorCode {
+	OPEN_ERR = PAM_OPEN_ERR as c_int,
+	SYMBOL_ERR = PAM_SYMBOL_ERR as c_int,
+	SERVICE_ERR = PAM_SERVICE_ERR as c_int,
+	SYSTEM_ERR = PAM_SYSTEM_ERR as c_int,
+	BUF_ERR = PAM_BUF_ERR as c_int,
+	PERM_DENIED = PAM_PERM_DENIED as c_int,
+	AUTH_ERR = PAM_AUTH_ERR as c_int,
+	CRED_INSUFFICIENT = PAM_CRED_INSUFFICIENT as c_int,
+	AUTHINFO_UNAVAIL = PAM_AUTHINFO_UNAVAIL as c_int,
+	USER_UNKNOWN = PAM_USER_UNKNOWN as c_int,
+	MAXTRIES = PAM_MAXTRIES as c_int,
+	NEW_AUTHTOK_REQD = PAM_NEW_AUTHTOK_REQD as c_int,
+	ACCT_EXPIRED = PAM_ACCT_EXPIRED as c_int,
+	SESSION_ERR = PAM_SESSION_ERR as c_int,
+	CRED_UNAVAIL = PAM_CRED_UNAVAIL as c_int,
+	CRED_EXPIRED = PAM_CRED_EXPIRED as c_int,
+	CRED_ERR = PAM_CRED_ERR as c_int,
+	CONV_ERR = PAM_CONV_ERR as c_int,
+	AUTHTOK_ERR = PAM_AUTHTOK_ERR as c_int,
+	AUTHTOK_RECOVERY_ERR = PAM_AUTHTOK_RECOVERY_ERR as c_int,
+	AUTHTOK_LOCK_BUSY = PAM_AUTHTOK_LOCK_BUSY as c_int,
+	AUTHTOK_DISABLE_AGING = PAM_AUTHTOK_DISABLE_AGING as c_int,
+	ABORT = PAM_ABORT as c_int,
+	AUTHTOK_EXPIRED = PAM_AUTHTOK_EXPIRED as c_int,
+	MODULE_UNKNOWN = PAM_MODULE_UNKNOWN as c_int,
+	BAD_ITEM = PAM_BAD_ITEM as c_int,
+	CONV_AGAIN = PAM_CONV_AGAIN as c_int,
+	INCOMPLETE = PAM_INCOMPLETE as c_int,
+}
 
 /// Type alias for the result of most PAM methods.
 pub type Result<T> = std::result::Result<T, Error>;
 /// Type alias for the result of PAM methods that pass back a consumed struct
 /// on error.
 pub type ExtResult<T, P> = std::result::Result<T, ErrorWith<P>>;
+
+const PAM_SUCCESS: c_int = pam_sys::PAM_SUCCESS as c_int;

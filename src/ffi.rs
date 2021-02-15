@@ -8,22 +8,24 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.            *
  ***********************************************************************/
 
-use super::ConversationHandler;
-use super::resp_buf::{ResponseBuffer};
-use crate::error::ReturnCode;
+use crate::ConversationHandler;
+use crate::resp_buf::{ResponseBuffer};
+use crate::error::ErrorCode;
+use crate::PAM_SUCCESS;
 
 use std::mem::size_of;
 use std::slice;
 use std::ffi::{CStr, CString};
-use libc::{c_int, c_void};
-use pam_sys::types::{PamResponse, PamConversation, PamMessage, PamMessageStyle as MessageStyle};
+use libc::{c_int, c_uint, c_void};
+use pam_sys::{pam_response as PamResponse, pam_conv as PamConversation, pam_message as PamMessage};
+use pam_sys::PAM_BUF_ERR;
 
 /// Wraps `callback` along with [`pam_converse<T>`] for handing to libpam.
 #[allow(clippy::borrowed_box)]
 pub(crate) fn to_pam_conv<T: ConversationHandler>(callback: &mut Box<T>) -> PamConversation {
 	PamConversation {
 		conv: Some(pam_converse::<T>),
-		data_ptr: (&mut **callback) as *mut T as *mut libc::c_void,
+		appdata_ptr: (&mut **callback) as *mut T as *mut libc::c_void,
 	}
 }
 
@@ -46,7 +48,7 @@ const fn map_conv_string(input: CString) -> Option<CString> {
 #[cfg(not(target_os="solaris"))]
 #[inline]
 #[allow(clippy::cast_sign_loss)]
-fn msg_to_slice(msg: &*mut *mut PamMessage, num_msg: c_int) -> &[&PamMessage] {
+fn msg_to_slice(msg: &*mut *const PamMessage, num_msg: c_int) -> &[&PamMessage] {
 	assert!(num_msg >= 0 || msg.is_null());
 	// This is sound, as [&PamMessage] has the same layout as "array of ptrs
 	// to PamMessage structs" and msgs lives at least until we return.
@@ -63,11 +65,11 @@ fn msg_to_slice(msg: &*mut *mut PamMessage, num_msg: c_int) -> &[&PamMessage] {
 #[cfg(target_os="solaris")]
 #[inline]
 #[allow(clippy::cast_sign_loss)]
-fn msg_to_slice(msg: &*mut *mut PamMessage, num_msg: c_int) -> &'static [PamMessage] {
+fn msg_to_slice(msg: &*mut *const PamMessage, num_msg: c_int) -> &'static [PamMessage] {
 	assert!(num_msg >= 0 || msg.is_null());
 	// This is sound, as *[PamMessage] has the same layout as "ptr to array
 	// of PamMessage structs" and msgs lives at least until we return.
-	unsafe { slice::from_raw_parts((**msg) as *const PamMessage, num_msg as usize) }
+	unsafe { slice::from_raw_parts((**msg), num_msg as usize) }
 }
 
 /// Maximum supported message number (for Linux and similar)
@@ -89,9 +91,9 @@ const fn max_msg_num() -> isize {
 /// Will be called by C code when a conversation is requested. Does sanity
 /// checks, prepares a response buffer and calls the conversation function
 /// identified by `T` and `appdata_ptr` for each message.
-pub(crate) extern "C" fn pam_converse<T: ConversationHandler>(
+pub(crate) unsafe extern "C" fn pam_converse<T: ConversationHandler>(
 	num_msg: c_int,
-	msg: *mut *mut PamMessage,
+	msg: *mut *const PamMessage,
 	out_resp: *mut *mut PamResponse,
 	appdata_ptr: *mut c_void
 ) -> c_int {
@@ -99,24 +101,24 @@ pub(crate) extern "C" fn pam_converse<T: ConversationHandler>(
 
 	// Check for null pointers
 	if msg.is_null() || out_resp.is_null() || appdata_ptr.is_null() {
-		return ReturnCode::BUF_ERR as i32;
+		return PAM_BUF_ERR as c_int;
 	}
 
 	// Extract conversation handler from `appdata_ptr`.
 	// This is sound, as we did the reverse in `Context::new()`.
-	let handler = unsafe { &mut *(appdata_ptr as *mut T) };
+	let handler = &mut *(appdata_ptr as *mut T);
 
 	// Prepare response buffer
 	let mut responses = match ResponseBuffer::new(num_msg as isize) {
 		Ok(buf) => buf,
-		Err(e) => return e.code() as i32
+		Err(e) => return e.code().repr()
 	};
 
 	// Check preconditions for slice::from_raw_parts.
 	// (the checks in `ResponseBuffer::new` are even stricter but better be
 	// safe than sorry).
 	if !(0..=MAX_MSG_NUM).contains(&(num_msg as isize)) {
-		return ReturnCode::BUF_ERR as i32;
+		return PAM_BUF_ERR as c_int;
 	}
 
 	// Cast `msg` with `num_msg` to a slice for easy iteration.
@@ -124,38 +126,36 @@ pub(crate) extern "C" fn pam_converse<T: ConversationHandler>(
 
 	// Call conversation handler for each message
 	for (i, message) in messages.iter().enumerate() {
+		// Extra safeguard against stray NULL pointers
 		// This is sound as long as the PAM modules play by the rules
 		// and the correct `msg_to_slice` implementation was selected
 		// by the build process.
-		let text = unsafe {
-			// Extra safeguard against stray NULL pointers
-			if message.msg.is_null() {
-				CStr::from_bytes_with_nul_unchecked(b"\0")
-			} else {
-				CStr::from_ptr(message.msg)
-			}
+		let text = if message.msg.is_null() {
+			CStr::from_bytes_with_nul_unchecked(b"\0")
+		} else {
+			CStr::from_ptr(message.msg)
 		};
 		
 		// Delegate to the correct handler method based on `msg_style`
-		let result = match MessageStyle::from(message.msg_style) {
-			MessageStyle::PROMPT_ECHO_ON => handler.prompt_echo_on(text).map(map_conv_string),
-			MessageStyle::PROMPT_ECHO_OFF => handler.prompt_echo_off(text).map(map_conv_string),
-			MessageStyle::TEXT_INFO => { handler.text_info(text); Ok(None) },
-			MessageStyle::ERROR_MSG => { handler.error_msg(text); Ok(None) },
+		let result = match message.msg_style as c_uint {
+			pam_sys::PAM_PROMPT_ECHO_ON => handler.prompt_echo_on(text).map(map_conv_string),
+			pam_sys::PAM_PROMPT_ECHO_OFF => handler.prompt_echo_off(text).map(map_conv_string),
+			pam_sys::PAM_TEXT_INFO => { handler.text_info(text); Ok(None) },
+			pam_sys::PAM_ERROR_MSG => { handler.error_msg(text); Ok(None) },
+			_ => Err(ErrorCode::CONV_ERR),
 		};
 
 		// Process response and bail out on errors
 		match result {
 			Ok(response) => responses.put(i, response),
-			Err(ReturnCode::SUCCESS) => responses.put(i, None),
-			Err(code) => return code as i32
+			Err(code) => return code.repr()
 		}
 	}
 
 	// Transfer responses to caller and return.
 	// Sound as long as the PAM modules play by the rules..
-	unsafe { *out_resp = responses.into() };
-	ReturnCode::SUCCESS as i32
+	*out_resp = responses.into();
+	PAM_SUCCESS as i32
 }
 
 #[cfg(test)]
@@ -177,58 +177,58 @@ mod tests {
 	fn test_edge_cases() {
 		let (handler, pam_conv) = make_handler();
 		let c_callback = pam_conv.conv.unwrap();
-		let appdata = pam_conv.data_ptr;
+		let appdata = pam_conv.appdata_ptr;
 
 		let text = CString::new("").unwrap();
 		let mut msg = PamMessage {
-			msg_style: MessageStyle::PROMPT_ECHO_ON as i32,
+			msg_style: pam_sys::PAM_PROMPT_ECHO_ON as c_int,
 			msg: text.as_ptr()
 		};
-		let mut msg_ptr = &mut msg as *mut _;
+		let mut msg_ptr = &mut msg as *const _;
 
 		let mut responses: *mut PamResponse = ptr::null_mut();
 
 		assert_eq!(
-			c_callback(
+			unsafe { c_callback(
 				1,
 				ptr::null_mut(),
 				&mut responses as *mut *mut _,
 				appdata,
-			),
-			ReturnCode::BUF_ERR as i32,
+			) },
+			ErrorCode::BUF_ERR.repr(),
 			"pam_conv with null `msg` arg returned `left` instead of BUF_ERR"
 		);
 
 		assert_eq!(
-			c_callback(
+			unsafe { c_callback(
 				1,
-				&mut msg_ptr as *mut *mut PamMessage,
+				&mut msg_ptr as *mut *const PamMessage,
 				ptr::null_mut(),
 				appdata,
-			),
-			ReturnCode::BUF_ERR as i32,
+			) },
+			ErrorCode::BUF_ERR.repr(),
 			"pam_conv with null `out_resp` arg returned `left` instead of BUF_ERR"
 		);
 
 		assert_eq!(
-			c_callback(
+			unsafe { c_callback(
 				1,
-				&mut msg_ptr as *mut *mut _,
+				&mut msg_ptr as *mut *const _,
 				&mut responses as *mut *mut _,
 				ptr::null_mut(),
-			),
-			ReturnCode::BUF_ERR as i32,
+			) },
+			ErrorCode::BUF_ERR.repr(),
 			"pam_conv with null `appdata_ptr` arg returned `left` instead of BUF_ERR"
 		);
 
 		assert_eq!(
-			c_callback(
+			unsafe { c_callback(
 				-1,
-				&mut msg_ptr as *mut *mut _,
+				&mut msg_ptr as *mut *const _,
 				&mut responses as *mut *mut _,
 				appdata,
-			),
-			ReturnCode::BUF_ERR as i32,
+			) },
+			ErrorCode::BUF_ERR.repr(),
 			"pam_conv with negative `msg_num` arg returned `left` instead of BUF_ERR"
 		);
 
@@ -244,25 +244,25 @@ mod tests {
 	fn test_zero_num() {
 		let (handler, pam_conv) = make_handler();
 		let c_callback = pam_conv.conv.unwrap();
-		let appdata = pam_conv.data_ptr;
+		let appdata = pam_conv.appdata_ptr;
 
 		let mut msg = PamMessage {
-			msg_style: MessageStyle::PROMPT_ECHO_ON as i32,
+			msg_style: pam_sys::PAM_PROMPT_ECHO_ON as c_int,
 			msg: ptr::null_mut()
 		};
-		let mut msg_ptr = &mut msg as *mut _;
+		let mut msg_ptr = &mut msg as *const _;
 
 		let mut responses: *mut PamResponse = ptr::null_mut();
 
 		// zero `msg_num` should fail
 		assert_eq!(
-			c_callback(
+			unsafe { c_callback(
 				0,
-				&mut msg_ptr as *mut *mut _,
+				&mut msg_ptr as *mut *const _,
 				&mut responses as *mut *mut _,
 				appdata,
-			),
-			ReturnCode::BUF_ERR as i32,
+			) },
+			ErrorCode::BUF_ERR.repr(),
 			"pam_conv with zero `msg_num` arg returned `left` instead of BUF_ERR"
 		);
 
@@ -271,29 +271,29 @@ mod tests {
 	}
 
 	/// Check if `pam_conv` correctly answers a prompt
-	fn test_prompt(style: MessageStyle, prompt: &str, expected: &str) {
+	fn test_prompt(style: c_uint, prompt: &str, expected: &str) {
 		let (handler, pam_conv) = make_handler();
 		let c_callback = pam_conv.conv.unwrap();
-		let appdata = pam_conv.data_ptr;
+		let appdata = pam_conv.appdata_ptr;
 
 		let text = CString::new(prompt).unwrap();
 		let mut msg = PamMessage {
-			msg_style: style as i32,
+			msg_style: style as c_int,
 			msg: text.as_ptr()
 		};
-		let mut msg_ptr = &mut msg as *mut _;
+		let mut msg_ptr = &mut msg as *const _;
 
 		let mut responses: *mut PamResponse = ptr::null_mut();
 
-		let code = c_callback(
+		let code = unsafe { c_callback(
 			1,
-			&mut msg_ptr as *mut *mut _,
+			&mut msg_ptr as *mut *const _,
 			&mut responses as *mut *mut _,
 			appdata,
-		);
+		) };
 		assert_eq!(
 			code,
-			ReturnCode::SUCCESS as i32,
+			pam_sys::PAM_SUCCESS as c_int,
 			"pam_conv failed with error code `left`"
 		);
 
@@ -331,26 +331,26 @@ mod tests {
 		let mut handler = Box::new(NullConversation::new());
 		let pam_conv = to_pam_conv(&mut handler);
 		let c_callback = pam_conv.conv.unwrap();
-		let appdata = pam_conv.data_ptr;
+		let appdata = pam_conv.appdata_ptr;
 
 		let text = CString::new("").unwrap();
 		let mut msg = PamMessage {
-			msg_style: MessageStyle::PROMPT_ECHO_OFF as i32,
+			msg_style: pam_sys::PAM_PROMPT_ECHO_OFF as c_int,
 			msg: text.as_ptr()
 		};
-		let mut msg_ptr = &mut msg as *mut _;
+		let mut msg_ptr = &mut msg as *const _;
 
 		let mut responses: *mut PamResponse = ptr::null_mut();
 
-		let code = c_callback(
+		let code = unsafe { c_callback(
 			1,
-			&mut msg_ptr as *mut *mut _,
+			&mut msg_ptr as *mut *const _,
 			&mut responses as *mut *mut _,
 			appdata,
-		);
+		) };
 		assert_eq!(
 			code,
-			ReturnCode::CONV_ERR as i32,
+			ErrorCode::CONV_ERR.repr(),
 			"pam_conv failed with error code `left`"
 		);
 
@@ -363,42 +363,42 @@ mod tests {
 	/// Check if `pam_conv` correctly answers an echoing prompt
 	#[test]
 	fn test_prompt_echo_on() {
-		test_prompt(MessageStyle::PROMPT_ECHO_ON, "username? ", "test usër")
+		test_prompt(pam_sys::PAM_PROMPT_ECHO_ON, "username? ", "test usër")
 	}
 
 	/// Check if `pam_conv` correctly answers a secret prompt
 	#[test]
 	fn test_prompt_echo_off() {
-		test_prompt(MessageStyle::PROMPT_ECHO_OFF, "password? ", "paßword")
+		test_prompt(pam_sys::PAM_PROMPT_ECHO_OFF, "password? ", "paßword")
 	}
 
 	/// Check if `pam_conv` correctly handles a info/error message
-	fn test_output_msg(style: MessageStyle, text: Option<&str>) -> LogEntry {
+	fn test_output_msg(style: c_uint, text: Option<&str>) -> LogEntry {
 		let (mut handler, pam_conv) = make_handler();
 		let c_callback = pam_conv.conv.unwrap();
-		let appdata = pam_conv.data_ptr;
+		let appdata = pam_conv.appdata_ptr;
 
 		let c_text = CString::new(text.unwrap_or("")).unwrap();
 		let mut msg = PamMessage {
-			msg_style: style as i32,
+			msg_style: style as c_int,
 			msg: match text {
 				Some(_) => c_text.as_ptr(),
 				None => ptr::null(),
 			}
 		};
-		let mut msg_ptr = &mut msg as *mut _;
+		let mut msg_ptr = &mut msg as *const _;
 
 		let mut responses: *mut PamResponse = ptr::null_mut();
 
-		let code = c_callback(
+		let code = unsafe { c_callback(
 			1,
-			&mut msg_ptr as *mut *mut _,
+			&mut msg_ptr as *mut *const _,
 			&mut responses as *mut *mut _,
 			appdata,
-		);
+		) };
 		assert_eq!(
 			code,
-			ReturnCode::SUCCESS as i32,
+			pam_sys::PAM_SUCCESS as c_int,
 			"pam_conv failed with error code `left`"
 		);
 
@@ -437,7 +437,7 @@ mod tests {
 	#[test]
 	fn test_error_msg() {
 		const MSG: &str = "test error öäüß";
-		let logentry = test_output_msg(MessageStyle::ERROR_MSG, Some(MSG));
+		let logentry = test_output_msg(pam_sys::PAM_ERROR_MSG, Some(MSG));
 		if let LogEntry::Error(msg) = logentry {
 			assert_eq!(msg.to_string_lossy(), MSG, "log contained unexpected message `left`");
 		} else {
@@ -449,7 +449,7 @@ mod tests {
 	#[test]
 	fn test_info_msg() {
 		const MSG: &str = "test info äöüß";
-		let logentry = test_output_msg(MessageStyle::TEXT_INFO, Some(MSG));
+		let logentry = test_output_msg(pam_sys::PAM_TEXT_INFO, Some(MSG));
 		if let LogEntry::Info(msg) = logentry {
 			assert_eq!(msg.to_string_lossy(), MSG, "log contained unexpected message `left`");
 		} else {
@@ -460,7 +460,7 @@ mod tests {
 	/// Check if a null pointer is safely converted into an empty string
 	#[test]
 	fn test_null_msg() {
-		let logentry = test_output_msg(MessageStyle::TEXT_INFO, None);
+		let logentry = test_output_msg(pam_sys::PAM_TEXT_INFO, None);
 		if let LogEntry::Info(msg) = logentry {
 			assert_eq!(msg.to_string_lossy(), "", "log contained unexpected message `left`");
 		} else {

@@ -8,7 +8,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.            *
  ***********************************************************************/
 
-use crate::error::ReturnCode;
+use crate::error::ErrorCode;
 use std::ffi::{CString, CStr};
 use std::result::Result;
 
@@ -39,7 +39,7 @@ pub trait ConversationHandler {
 	/// - [`ReturnCode::CONV_AGAIN`]: no result yet, the PAM library should
 	///   pass [`ReturnCode::INCOMPLETE`] to the application and let it
 	///   try again later.
-	fn prompt_echo_on(&mut self, prompt: &CStr) -> Result<CString, ReturnCode>;
+	fn prompt_echo_on(&mut self, prompt: &CStr) -> Result<CString, ErrorCode>;
 
 	/// Obtains a string without echoing any text (e.g. password)
 	///

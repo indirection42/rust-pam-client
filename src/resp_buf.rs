@@ -8,14 +8,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.            *
  ***********************************************************************/
 
-use crate::error::{Error, ReturnCode};
+use crate::error::ErrorCode;
 use crate::Result;
 
-use std::convert::TryFrom;
 use std::ffi::CString;
 use std::{mem, slice, ptr};
 use libc::{strdup, free, c_void};
-use pam_sys::types::PamResponse;
+use pam_sys::pam_response as PamResponse;
 use crate::c_box::CBox;
 
 /// Reasonably safe fixed-length buffer for PAM conversation responses.
@@ -37,7 +36,7 @@ impl ResponseBuffer {
 	/// 3. the memory could not be allocated.
 	pub fn new(len: isize) -> Result<Self> {
 		if len <= 0 {
-			return Err(Error::try_from(ReturnCode::BUF_ERR).unwrap());
+			return Err(ErrorCode::BUF_ERR.into());
 		}
 		#[allow(clippy::cast_sign_loss)]
 		let buffer = CBox::<PamResponse>::try_new_zeroed_slice(len as usize)?;

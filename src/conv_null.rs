@@ -11,7 +11,7 @@
  ***********************************************************************/
 
 use std::ffi::{CStr, CString};
-use crate::error::ReturnCode;
+use crate::error::ErrorCode;
 use super::ConversationHandler;
 
 /// Null implementation of `ConversationHandler`
@@ -40,12 +40,12 @@ impl Default for Conversation {
 }
 
 impl ConversationHandler for Conversation {
-	fn prompt_echo_on(&mut self, _msg: &CStr) -> Result<CString, ReturnCode> {
-		Err(ReturnCode::CONV_ERR)
+	fn prompt_echo_on(&mut self, _msg: &CStr) -> Result<CString, ErrorCode> {
+		Err(ErrorCode::CONV_ERR)
 	}
 
-	fn prompt_echo_off(&mut self, _msg: &CStr) -> Result<CString, ReturnCode> {
-		Err(ReturnCode::CONV_ERR)
+	fn prompt_echo_off(&mut self, _msg: &CStr) -> Result<CString, ErrorCode> {
+		Err(ErrorCode::CONV_ERR)
 	}
 
 	fn text_info(&mut self, _msg: &CStr) {}

@@ -10,10 +10,9 @@
 
 #![allow(dead_code)]
 
-use crate::error::{Error, ReturnCode};
+use crate::error::{Error, ErrorCode};
 use crate::{Result, ExtResult};
 
-use std::convert::TryFrom;
 use std::ptr::{NonNull, drop_in_place};
 use std::cmp::Ordering;
 use std::ops::{Deref, DerefMut};
@@ -147,7 +146,7 @@ impl<T> CBox<T> where T: ?Sized {
 	/// Internal: Builds an `Error` instance with `BUF_ERR` error code
 	#[cold]
 	fn buf_err() -> Error {
-		Error::try_from(ReturnCode::BUF_ERR).unwrap()
+		ErrorCode::BUF_ERR.into()
 	}
 
 	/// Takes ownership of a pointer

@@ -13,7 +13,7 @@ use crate::ConversationHandler;
 use crate::env_list::EnvList;
 use crate::{Result, ExtResult, Flag};
 
-use pam_sys::wrapped::{setcred, close_session};
+use pam_sys::{pam_setcred, pam_close_session};
 
 /// Token type to resume RAII handling of a session that was released with [`Session::leak()`].
 ///
@@ -48,8 +48,7 @@ impl<'a, ConvT> Session<'a, ConvT> where ConvT: ConversationHandler {
 	/// Might be called periodically for long running sessions to
 	/// keep e.g. Kerberos tokens alive.
 	///
-	/// Because of limitations in [`pam_sys`] the flags are currently ignored.
-	/// Use [`Flag::NONE`] or [`Flag::SILENT`].
+	/// Relevant `flags` are [`Flag::NONE`] and [`Flag::SILENT`].
 	///
 	/// # Errors
 	/// Expected error codes include:
@@ -59,18 +58,17 @@ impl<'a, ConvT> Session<'a, ConvT> where ConvT: ConversationHandler {
 	/// - `ReturnCode::CRED_UNAVAIL`: Failed to retrieve credentials
 	/// - `ReturnCode::SYSTEM_ERR`: Other system error
 	/// - `ReturnCode::USER_UNKNOWN`: User not known
-	pub fn refresh_credentials(&mut self, _flags: Flag) -> Result<()> {
-		self.context.wrap_pam_return(setcred(self.context.handle(), Flag::REFRESH_CRED/*|flags*/))
+	pub fn refresh_credentials(&mut self, flags: Flag) -> Result<()> {
+		self.context.wrap_pam_return(unsafe { pam_setcred(self.context.handle(), (Flag::REFRESH_CRED|flags).bits()) })
 	}
 
 	/// Fully reinitializes the user's credentials.
 	///
-	/// Because of limitations in [`pam_sys`] the flags are currently ignored.
-	/// Use [`Flag::NONE`] or [`Flag::SILENT`].
+	/// Relevant `flags` are [`Flag::NONE`] and [`Flag::SILENT`].
 	///
 	/// See [`Context::reinitialize_credentials()`] for more information.
-	pub fn reinitialize_credentials(&mut self, _flags: Flag) -> Result<()> {
-		self.context.wrap_pam_return(setcred(self.context.handle(), Flag::REINITIALIZE_CRED/*|flags*/))
+	pub fn reinitialize_credentials(&mut self, flags: Flag) -> Result<()> {
+		self.context.wrap_pam_return(unsafe { pam_setcred(self.context.handle(), (Flag::REINITIALIZE_CRED|flags).bits()) })
 	}
 
 	/// Converts the session into a [`SessionToken`] without closing it.
@@ -142,14 +140,14 @@ impl<'a, ConvT> Session<'a, ConvT> where ConvT: ConversationHandler {
 	#[rustversion::attr(since(1.48), doc(alias = "pam_close_session"))]
 	pub fn close(mut self, flags: Flag) -> ExtResult<(), Self> {
 		if self.session_active {
-			let status = close_session(self.context.handle(), flags);
+			let status = unsafe { pam_close_session(self.context.handle(), flags.bits()) };
 			if let Err(e) = self.context.wrap_pam_return(status) {
 				return Err(e.into_with_payload(self));
 			}
 			self.session_active = false;
 		}
 		if self.credentials_active {
-			let status = setcred(self.context.handle(), Flag::DELETE_CRED/*|flags*/);
+			let status = unsafe { pam_setcred(self.context.handle(), (Flag::DELETE_CRED|flags).bits()) };
 			if let Err(e) = self.context.wrap_pam_return(status) {
 				return Err(e.into_with_payload(self));
 			}
@@ -163,12 +161,12 @@ impl<'a, ConvT> Session<'a, ConvT> where ConvT: ConversationHandler {
 impl<'a, ConvT> Drop for Session<'a, ConvT> where ConvT: ConversationHandler {
 	fn drop(&mut self) {
 		if self.session_active {
-			let status = close_session(self.context.handle(), Flag::NONE);
+			let status = unsafe { pam_close_session(self.context.handle(), Flag::NONE.bits()) };
 			self.session_active = false;
 			let _ = self.context.wrap_pam_return(status);
 		}
 		if self.credentials_active {
-			let status = setcred(self.context.handle(), Flag::DELETE_CRED/*|Flag::SILENT*/);
+			let status = unsafe { pam_setcred(self.context.handle(), (Flag::DELETE_CRED|Flag::SILENT).bits()) };
 			self.credentials_active = false;
 			let _ = self.context.wrap_pam_return(status);
 		}
