@@ -153,6 +153,7 @@ fn char_ptr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
 
 #[repr(transparent)]
 bitflags! {
+	/// Flags for most PAM functions
 	pub struct Flag: c_int {
 		/// Don't generate any messages
 		const SILENT = PAM_SILENT as c_int;
@@ -176,6 +177,7 @@ bitflags! {
 }
 
 impl Flag {
+	/// No flags; use default behaviour.
 	pub const NONE: Flag = Flag { bits: 0 };
 }
 
