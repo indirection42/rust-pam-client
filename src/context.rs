@@ -38,7 +38,7 @@ macro_rules! impl_pam_str_item {
 			let string = unsafe { CStr::from_ptr(ptr as *const _) }.to_string_lossy().into_owned();
 			return Ok(string);
 		}
-		
+
 		$(#[doc = "Sets "]#[doc = $doc])?
 		pub fn $set_name(&mut self, value: Option<&str>) -> Result<()> {
 			match value {
@@ -124,8 +124,6 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 			None => None,
 			Some(name) => Some(CString::new(name).map_err(|_| Error::from(ErrorCode::BUF_ERR))?),
 		};
-		
-		dbg!(&c_service, &c_username);
 
 		// Create callback struct for C code
 		let pam_conv = to_pam_conv(&mut boxed_conv);

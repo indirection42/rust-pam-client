@@ -50,11 +50,22 @@ pub trait ConversationHandler {
 	/// - [`ReturnCode::CONV_AGAIN`]: no result yet, the PAM library should
 	///   pass [`ReturnCode::INCOMPLETE`] to the application and let it
 	///   try again later.
-	fn prompt_echo_off(&mut self, prompt: &CStr) -> Result<CString, ReturnCode>;
+	fn prompt_echo_off(&mut self, prompt: &CStr) -> Result<CString, ErrorCode>;
 
 	/// Displays some text.
 	fn text_info(&mut self, msg: &CStr);
 
 	/// Displays an error message.
 	fn error_msg(&mut self, msg: &CStr);
+
+	/// Obtains a yes/no answer (Linux specific).
+	///
+	/// The default implementation calls `prompt_echo_on` and maps any answer
+	/// starting with 'y' or 'j' to "yes" and everything else to "no".
+	fn radio_prompt(&mut self, prompt: &CStr) -> Result<bool, ErrorCode> {
+		let prompt = [ prompt.to_bytes(), b" [y/N]\0" ].concat();
+
+		self.prompt_echo_on(CStr::from_bytes_with_nul(&prompt).unwrap())
+			.map(|s| matches!(s.as_bytes_with_nul()[0], b'Y' | b'y' | b'j' | b'J'))
+	}
 }

@@ -125,4 +125,8 @@ impl ConversationHandler for Conversation {
 	fn error_msg(&mut self, msg: &CStr) {
 		self.log.push(LogEntry::Error(msg.to_owned()))
 	}
+
+	fn radio_prompt(&mut self, _msg: &CStr) -> Result<bool, ErrorCode> {
+		Ok(false)
+	}
 }

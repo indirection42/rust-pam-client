@@ -142,6 +142,8 @@ pub(crate) unsafe extern "C" fn pam_converse<T: ConversationHandler>(
 			pam_sys::PAM_PROMPT_ECHO_OFF => handler.prompt_echo_off(text).map(map_conv_string),
 			pam_sys::PAM_TEXT_INFO => { handler.text_info(text); Ok(None) },
 			pam_sys::PAM_ERROR_MSG => { handler.error_msg(text); Ok(None) },
+			#[cfg(target_os="linux")]
+			pam_sys::PAM_RADIO_TYPE => { handler.radio_prompt(text).map(|b| if b { CString::new("yes").ok() } else { CString::new("no").ok() }) },
 			_ => Err(ErrorCode::CONV_ERR),
 		};
 
