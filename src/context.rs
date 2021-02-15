@@ -211,8 +211,8 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// # Safety
 	/// This method is unsafe. You must guarantee that the data pointed to by
 	/// `value` matches the type the PAM library expects. E.g. a null terminated
-	/// `*const c_char` for [`PAM_SERVICE`] or `*const PamXAuthData` for
-	/// [`PAM_XAUTHDATA`].
+	/// `*const c_char` for `PAM_SERVICE` or `*const PamXAuthData` for
+	/// `PAM_XAUTHDATA`.
 	#[rustversion::attr(since(1.48), doc(alias = "pam_set_item"))]
 	pub unsafe fn set_item(&mut self, item_type: c_int, value: *const c_void) -> Result<()> {
 		self.wrap_pam_return(pam_set_item(self.handle(), item_type, &*value))
@@ -375,6 +375,8 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// - `USER_UNKNOWN` – User not known
 	/// - `INCOMPLETE` – The conversation handler returned `CONV_AGAIN`. Call
 	///   again after the asynchronous conversation finished.
+	///
+	/// [`chauthtok()`]: `Self::chauthtok`
 	#[rustversion::attr(since(1.48), doc(alias = "pam_acct_mgmt"))]
 	pub fn acct_mgmt(&mut self, flags: Flag) -> Result<()> {
 		self.wrap_pam_return(unsafe { pam_acct_mgmt(self.handle(), flags.bits()) })
@@ -455,8 +457,8 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// - `INCOMPLETE` – The conversation handler returned `CONV_AGAIN`. Call
 	///   again after the asynchronous conversation finished.
 	///
-	/// [authenticated]: authenticate()
-	/// [authorized]: acct_mgmt()
+	/// [authenticated]: `Self::authenticate()`
+	/// [authorized]: `Self::acct_mgmt()`
 	#[rustversion::attr(since(1.48), doc(alias = "pam_open_session"))]
 	pub fn open_session(&mut self, flags: Flag) -> Result<Session<ConvT>> {
 		self.wrap_pam_return(unsafe { pam_setcred(self.handle(), (Flag::ESTABLISH_CRED|flags).bits()) })?;

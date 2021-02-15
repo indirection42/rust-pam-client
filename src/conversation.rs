@@ -34,10 +34,10 @@ pub trait ConversationHandler {
 	///
 	/// # Errors
 	/// You should return one of the following error codes on failure.
-	/// - [`ReturnCode::CONV_ERR`]: Conversation failure.
-    /// - [`ReturnCode::BUF_ERR`]: Memory allocation error.
-	/// - [`ReturnCode::CONV_AGAIN`]: no result yet, the PAM library should
-	///   pass [`ReturnCode::INCOMPLETE`] to the application and let it
+	/// - [`ErrorCode::CONV_ERR`]: Conversation failure.
+	/// - [`ErrorCode::BUF_ERR`]: Memory allocation error.
+	/// - [`ErrorCode::CONV_AGAIN`]: no result yet, the PAM library should
+	///   pass [`ErrorCode::INCOMPLETE`] to the application and let it
 	///   try again later.
 	fn prompt_echo_on(&mut self, prompt: &CStr) -> Result<CString, ErrorCode>;
 
@@ -45,10 +45,10 @@ pub trait ConversationHandler {
 	///
 	/// # Errors
 	/// You should return one of the following error codes on failure.
-	/// - [`ReturnCode::CONV_ERR`]: Conversation failure.
-    /// - [`ReturnCode::BUF_ERR`]: Memory allocation error.
-	/// - [`ReturnCode::CONV_AGAIN`]: no result yet, the PAM library should
-	///   pass [`ReturnCode::INCOMPLETE`] to the application and let it
+	/// - [`ErrorCode::CONV_ERR`]: Conversation failure.
+	/// - [`ErrorCode::BUF_ERR`]: Memory allocation error.
+	/// - [`ErrorCode::CONV_AGAIN`]: no result yet, the PAM library should
+	///   pass [`ErrorCode::INCOMPLETE`] to the application and let it
 	///   try again later.
 	fn prompt_echo_off(&mut self, prompt: &CStr) -> Result<CString, ErrorCode>;
 
