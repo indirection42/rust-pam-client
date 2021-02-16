@@ -587,7 +587,7 @@ unsafe impl<ConvT> Send for Context<ConvT> where ConvT: ConversationHandler + Se
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use std::ffi::OsStr;
+	use std::ffi::{OsStr, OsString};
 
 	#[test]
 	fn test_basic() {
@@ -644,7 +644,18 @@ mod tests {
 				let (_,v): (&OsStr, &OsStr) = item.into();
 				assert_eq!(v.to_string_lossy(), "2");
 			}
+			let _ = item.as_ref();
 		}
+		assert_eq!(env.is_empty(), false);
+		assert_eq!(env.len(), env.as_ref().len());
+		assert_eq!(env.as_ref(), context.envlist().as_ref());
+		assert_eq!(env.as_ref().partial_cmp(context.envlist().as_ref()), Some(std::cmp::Ordering::Equal));
+		assert_eq!(env.as_ref().cmp(context.envlist().as_ref()), std::cmp::Ordering::Equal);
+		assert_eq!(&env[&OsString::from("TEST".to_string())], "1");
+		let list: std::vec::Vec<(std::ffi::OsString, std::ffi::OsString)> = context.envlist().into();
+		assert_eq!(list.len(), env.len());
+		let list: std::vec::Vec<CString> = context.envlist().into();
+		assert_eq!(list.len(), env.len());
 		drop(context)
 	}
 
