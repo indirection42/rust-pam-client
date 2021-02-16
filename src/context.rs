@@ -669,10 +669,13 @@ mod tests {
 		// Set username
 		context.set_user(Some("anybody")).unwrap();
 		// Replace conversation handler
-		let (context, old_conv) = context.replace_conversation(crate::conv_mock::Conversation::default()).unwrap();
+		let (mut context, old_conv) = context.replace_conversation(crate::conv_mock::Conversation::default()).unwrap();
 		// Check if set username was propagated to the new handler
 		assert_eq!(context.conversation().username, "anybody");
-		let (_context, _) = context.replace_conversation(old_conv).unwrap();
+		context.set_user(None).unwrap();
+		let (context, _) = context.replace_conversation(old_conv).unwrap();
+		// Check if username stays None after being set througout a replace.
+		assert!(context.user().is_err());
 	}
 
 	/// Shallowly tests a full authentication + password change + session cycle.
@@ -692,7 +695,7 @@ mod tests {
 		let _ = context.authenticate(Flag::SILENT);
 		let _ = context.acct_mgmt(Flag::SILENT);
 		let _ = context.chauthtok(Flag::CHANGE_EXPIRED_AUTHTOK);
-		let _ = context.reinitialize_credentials(Flag::SILENT);
+		let _ = context.reinitialize_credentials(Flag::SILENT | Flag::NONE);
 		if let Ok(mut session) = context.open_session(Flag::SILENT) {
 			let _ = session.refresh_credentials(Flag::SILENT);
 			let _ = session.reinitialize_credentials(Flag::SILENT);
