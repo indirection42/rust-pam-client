@@ -59,7 +59,7 @@ macro_rules! impl_pam_str_item {
 /// states that returned data should not be modified.
 #[cfg(any(target_os="linux",doc))]
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 struct XAuthData {
 	/// Length of `name` in bytes excluding the trailing NUL
 	pub namelen: c_int,
