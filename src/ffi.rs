@@ -450,6 +450,13 @@ mod tests {
 		test_prompt(pam_sys::PAM_PROMPT_ECHO_OFF, "password? ", "paßword")
 	}
 
+	/// Check if `pam_conv` correctly answers a radio prompt (Linxu specific)
+	#[test]
+	#[cfg(target_os="linux")]
+	fn test_prompt_radio() {
+		test_prompt(pam_sys::PAM_RADIO_TYPE, "no? ", "no")
+	}
+
 	/// Check if `pam_conv` correctly handles a info/error message
 	fn test_output_msg(style: c_uint, text: Option<&str>) -> LogEntry {
 		let (mut handler, pam_conv) = make_handler();

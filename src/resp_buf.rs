@@ -187,11 +187,13 @@ mod tests {
 	use super::*;
 
 	fn prepare_test_buffer() -> ResponseBuffer {
-		let mut buffer = ResponseBuffer::new(3).unwrap();
+		let mut buffer = ResponseBuffer::new(4).unwrap();
 		buffer.put(0, Some(CString::new("some response").unwrap()));
 		buffer.put(1, None);
 		buffer.put(2, Some(CString::new("some response").unwrap()));
 		buffer.put(2, Some(CString::new("another response").unwrap()));
+		buffer.put_binary(3, 1, &[]);
+		buffer.put_binary(3, 1, &[0,1,2]);
 		return buffer;
 	}
 
