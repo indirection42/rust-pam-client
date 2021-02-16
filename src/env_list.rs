@@ -257,14 +257,6 @@ impl<'a> AsRef<[EnvItem]> for EnvList {
 	}
 }
 
-/// Reference conversion to `&[EnvItem]` with `.from()`/`.into()`
-impl<'a> From<&'a EnvList> for &'a[EnvItem] {
-	#[inline]
-	fn from(list: &EnvList) -> &[EnvItem] {
-		list.as_ref()
-	}
-}
-
 /// Conversion to a vector of (key, value) tuples.
 impl From<EnvList> for Vec<(OsString, OsString)> {
 	fn from(list: EnvList) -> Self {
@@ -290,7 +282,7 @@ impl From<EnvList> for Vec<CString> {
 }
 
 /// Indexing with `list[key]`
-impl<'a> Index<&OsStr> for EnvList {
+impl Index<&OsStr> for EnvList {
 	type Output = OsStr;
 
 	/// Returns a reference to the value of the named environment variable.
