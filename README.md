@@ -11,7 +11,7 @@
 1. Add the following to your Cargo.toml:
 ```toml
 [dependencies]
-pam-client = "0.2.0"
+pam-client = "0.3.0-alpha"
 ```
 
 2. Read the [crate documentation](https://docs.rs/pam-client/)
