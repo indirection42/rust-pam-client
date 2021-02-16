@@ -552,4 +552,50 @@ mod tests {
 			assert!(false, "log contained unexpected message type");
 		}
 	}
+
+	/// Check if a unknown message type produces a conversation error
+	#[test]
+	#[should_panic="assertion failed"]
+	fn test_inval_msg() {
+		test_output_msg(65535, None);
+	}
+
+	/// Check if `pam_conv` correctly handles a binary message
+	#[test]
+	#[cfg(target_os="linux")]
+	fn test_binary() {
+		let (_handler, pam_conv) = make_handler();
+		let c_callback = pam_conv.conv.unwrap();
+		let appdata = pam_conv.appdata_ptr;
+
+		let buffer: Vec<u8> = vec![
+			0,
+			0,
+			0,
+			1,
+			0xFF,
+			0x42,
+		];
+
+		let msg = PamMessage {
+			msg_style: pam_sys::PAM_BINARY_PROMPT as c_int,
+			msg: buffer.as_ptr() as *const _
+		};
+		let mut msg_ptr = &msg as *const _;
+
+		let mut responses: *mut PamResponse = ptr::null_mut();
+
+		let code = unsafe { c_callback(
+			1,
+			&mut msg_ptr as *mut *const _,
+			&mut responses as *mut *mut _,
+			appdata,
+		) };
+
+		assert_eq!(
+			code,
+			pam_sys::PAM_CONV_ERR as c_int,
+			"pam_conv returned unexpected error code `left`"
+		);
+	}
 }
