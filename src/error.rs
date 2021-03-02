@@ -133,6 +133,7 @@ impl<T> ErrorWith<T> {
 		}
 	}
 
+	/// Maps the error payload to another type
 	pub fn map<U>(self, func: impl FnOnce(T) -> U) -> ErrorWith<U> {
 		ErrorWith::<U> {
 			code: self.code,
@@ -141,6 +142,15 @@ impl<T> ErrorWith<T> {
 				None => None,
 				Some(object) => Some(func(object))
 			}
+		}
+	}
+
+	/// Removes the payload and converts to [`Error`]
+	pub fn into_without_payload(self) -> Error {
+		Error {
+			code: self.code,
+			msg: self.msg,
+			payload: None
 		}
 	}
 }
@@ -299,6 +309,8 @@ mod tests {
 		let _ = error.take_payload();
 		assert_eq!(error.take_payload(), None);
 		let error = error.map(|_| usize::MIN);
+		assert_eq!(error.payload(), None);
+		let error = error.into_without_payload();
 		assert_eq!(error.payload(), None);
 		assert!(format!("{:?} {}", error, error).len() > 4);
 	}
