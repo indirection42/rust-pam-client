@@ -287,6 +287,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	///
 	/// Searches the environment list in this PAM context for an
 	/// item with key `name` and returns the value, if it exists.
+	#[must_use]
 	#[rustversion::attr(since(1.48), doc(alias = "pam_getenv"))]
 	pub fn getenv<'a>(&'a self, name: &str) -> Option<&'a str> {
 		let c_name = match CString::new(name) {
@@ -320,6 +321,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// The returned [`EnvList`] type is designed to ease handing the
 	/// environment to [`std::process::Command::envs()`] and
 	/// `nix::unistd::execve`.
+	#[must_use]
 	#[rustversion::attr(since(1.48), doc(alias = "pam_getenvlist"))]
 	pub fn envlist(&self) -> EnvList {
 		unsafe { EnvList::new(pam_getenvlist(self.handle()) as *mut *mut _) }

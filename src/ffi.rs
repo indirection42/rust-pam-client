@@ -41,7 +41,7 @@ const fn map_conv_string(input: CString) -> Option<CString> {
 /// Converts the message pointer into a slice for easy iteration.
 ///
 /// Version for Linux, NetBSD and similar platforms that interpret
-/// `**PamMessage` as "array of pointers to PamMessage structs".
+/// `**PamMessage` as "array of pointers to `PamMessage` structs".
 ///
 /// # Panics
 /// Panics if `num_msg` is negative or `msg` is null

@@ -97,9 +97,10 @@ impl ResponseBuffer {
 	/// Panics if the index is out of range, memory could not be allocated
 	/// or the length of the response exceeds `u32::MAX - 5`.
 	#[inline]
+	#[allow(clippy::cast_possible_truncation)]
 	pub fn put_binary(&mut self, index: usize, response_type: u8, response: &[u8]) {
 		assert!(index < self.items.len());
-		assert!(response.len()+5 <= u32::MAX as usize);
+		assert!(u32::try_from(response.len()+5).is_ok());
 		// Sound because of the bounds check above and because zeroed memory
 		// is a valid representation for the contained structs.
 		let dest = &mut self.items[index];

@@ -95,6 +95,7 @@ impl<'a, ConvT> Session<'a, ConvT> where ConvT: ConversationHandler {
 	/// Returns the value of a PAM environment variable.
 	///
 	/// See [`Context::getenv()`].
+	#[must_use]
 	#[rustversion::attr(since(1.48), doc(alias = "pam_getenv"))]
 	pub fn getenv<'b>(&'b self, name: &str) -> Option<&'b str> {
 		self.context.getenv(name)
@@ -111,6 +112,7 @@ impl<'a, ConvT> Session<'a, ConvT> where ConvT: ConversationHandler {
 	/// Returns a copy of the PAM environment in this context.
 	///
 	/// See [`Context::envlist()`].
+	#[must_use]
 	#[rustversion::attr(since(1.48), doc(alias = "pam_getenvlist"))]
 	pub fn envlist(&self) -> EnvList {
 		self.context.envlist()
