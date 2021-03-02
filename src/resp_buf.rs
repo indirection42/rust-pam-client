@@ -100,7 +100,7 @@ impl ResponseBuffer {
 	#[allow(clippy::cast_possible_truncation)]
 	pub fn put_binary(&mut self, index: usize, response_type: u8, response: &[u8]) {
 		assert!(index < self.items.len());
-		assert!(u32::try_from(response.len()+5).is_ok());
+		assert!(response.len()+5 <= u32::MAX as usize);
 		// Sound because of the bounds check above and because zeroed memory
 		// is a valid representation for the contained structs.
 		let dest = &mut self.items[index];
