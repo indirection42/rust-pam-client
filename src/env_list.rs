@@ -15,6 +15,7 @@ use std::iter::{FusedIterator};
 use std::ffi::{CStr, CString, OsStr, OsString};
 use std::ops::Index;
 use std::os::unix::ffi::OsStrExt;
+use std::collections::HashMap;
 use crate::c_box::CBox;
 
 /// Item in a PAM environment list.
@@ -278,6 +279,17 @@ impl From<EnvList> for Vec<CString> {
 			vec.push(item.as_cstr().to_owned())
 		}
 		vec
+	}
+}
+
+/// Conversion to a hash map
+impl From<EnvList> for HashMap<OsString, OsString> {
+	fn from(list: EnvList) -> Self {
+		let mut map = HashMap::with_capacity(list.len());
+		for (key, value) in list.iter_tuples() {
+			map.insert(key.to_owned(), value.to_owned());
+		}
+		map
 	}
 }
 
