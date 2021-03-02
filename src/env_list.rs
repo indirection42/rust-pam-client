@@ -15,6 +15,7 @@ use std::iter::{FusedIterator};
 use std::ffi::{CStr, CString, OsStr, OsString};
 use std::ops::Index;
 use std::os::unix::ffi::OsStrExt;
+use std::collections::HashMap;
 use crate::c_box::CBox;
 
 /// Item in a PAM environment list.
@@ -96,6 +97,14 @@ impl Ord for EnvItem {
 	#[inline]
 	fn cmp(&self, other: &Self) -> Ordering {
 		Ord::cmp(self.as_cstr(), other.as_cstr())
+	}
+}
+
+/// Serializes as a (key, value) OsStr tuple.
+#[cfg(feature = "serde")]
+impl serde::Serialize for EnvItem {
+	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		self.key_value().serialize(serializer)
 	}
 }
 
@@ -257,19 +266,10 @@ impl<'a> AsRef<[EnvItem]> for EnvList {
 	}
 }
 
-/// Reference conversion to `&[EnvItem]` with `.from()`/`.into()`
-impl<'a> From<&'a EnvList> for &'a[EnvItem] {
-	#[inline]
-	fn from(list: &EnvList) -> &[EnvItem] {
-		list.as_ref()
-	}
-}
-
 /// Conversion to a vector of (key, value) tuples.
 impl From<EnvList> for Vec<(OsString, OsString)> {
 	fn from(list: EnvList) -> Self {
-		let mut vec = Vec::new();
-		vec.reserve_exact(list.len());
+		let mut vec = Vec::with_capacity(list.len());
 		for (key, value) in list.iter_tuples() {
 			vec.push((key.to_owned(), value.to_owned()))
 		}
@@ -277,11 +277,17 @@ impl From<EnvList> for Vec<(OsString, OsString)> {
 	}
 }
 
+/// Reference conversion to a vector of (&key, &value) tuples.
+impl<'a> From<&'a EnvList> for Vec<(&'a OsStr, &'a OsStr)> {
+	fn from(list: &'a EnvList) -> Self {
+		list.iter_tuples().collect()
+	}
+}
+
 /// Conversion to a vector of "key=value" `CString`s.
 impl From<EnvList> for Vec<CString> {
 	fn from(list: EnvList) -> Self {
-		let mut vec = Vec::new();
-		vec.reserve_exact(list.len());
+		let mut vec = Vec::with_capacity(list.len());
 		for item in list.0.iter() {
 			vec.push(item.as_cstr().to_owned())
 		}
@@ -289,8 +295,37 @@ impl From<EnvList> for Vec<CString> {
 	}
 }
 
+/// Reference conversion to a vector of "key=value" `&CStr`s.
+impl<'a> From<&'a EnvList> for Vec<&'a CStr> {
+	fn from(list: &'a EnvList) -> Self {
+		let mut vec = Vec::with_capacity(list.len());
+		for item in list.0.iter() {
+			vec.push(item.as_cstr())
+		}
+		vec
+	}
+}
+
+/// Conversion to a hash map
+impl<S> From<EnvList> for HashMap<OsString, OsString, S> where S: ::std::hash::BuildHasher + Default {
+	fn from(list: EnvList) -> Self {
+		let mut map = HashMap::<_, _, S>::with_capacity_and_hasher(list.len(), S::default());
+		for (key, value) in list.iter_tuples() {
+			map.insert(key.to_owned(), value.to_owned());
+		}
+		map
+	}
+}
+
+/// Reference conversion to a referencing hash map
+impl<'a, S> From<&'a EnvList> for HashMap<&'a OsStr, &'a OsStr, S> where S: ::std::hash::BuildHasher + Default {
+	fn from(list: &'a EnvList) -> Self {
+		list.iter_tuples().collect()
+	}
+}
+
 /// Indexing with `list[key]`
-impl<'a> Index<&OsStr> for EnvList {
+impl Index<&OsStr> for EnvList {
 	type Output = OsStr;
 
 	/// Returns a reference to the value of the named environment variable.
@@ -299,6 +334,14 @@ impl<'a> Index<&OsStr> for EnvList {
 	/// Panics if the  environment variable is not present in the `EnvList`.
 	fn index(&self, name: &OsStr) -> &Self::Output {
 		self.get(name).expect("environment variable not found")
+	}
+}
+
+/// Serializes as a list of (key, value) OsStr tuples.
+#[cfg(feature = "serde")]
+impl serde::Serialize for EnvList {
+	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		self.0.serialize(serializer)
 	}
 }
 

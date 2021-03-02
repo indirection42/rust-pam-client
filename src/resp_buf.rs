@@ -8,14 +8,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.            *
  ***********************************************************************/
 
-use crate::error::{Error, ReturnCode};
+use crate::error::ErrorCode;
 use crate::Result;
 
-use std::convert::TryFrom;
 use std::ffi::CString;
 use std::{mem, slice, ptr};
 use libc::{strdup, free, c_void};
-use pam_sys::types::PamResponse;
+use pam_sys::pam_response as PamResponse;
 use crate::c_box::CBox;
 
 /// Reasonably safe fixed-length buffer for PAM conversation responses.
@@ -37,9 +36,9 @@ impl ResponseBuffer {
 	/// 3. the memory could not be allocated.
 	pub fn new(len: isize) -> Result<Self> {
 		if len <= 0 {
-			return Err(Error::try_from(ReturnCode::BUF_ERR).unwrap());
+			return Err(ErrorCode::BUF_ERR.into());
 		}
-
+		#[allow(clippy::cast_sign_loss)]
 		let buffer = CBox::<PamResponse>::try_new_zeroed_slice(len as usize)?;
 		Ok(Self { items: unsafe { buffer.assume_all_init() } })
 	}
@@ -85,6 +84,44 @@ impl ResponseBuffer {
 			Some(text) => PamResponse { resp: unsafe { strdup(text.as_ptr()) }, resp_retcode: 0 },
 			None => PamResponse { resp: ptr::null_mut(), resp_retcode: 0 },
 		}
+	}
+
+	/// Puts a binary response at the specified index slot. (Linux specific, experimental)
+	///
+	/// If the slot was already filled, the previous response will be lost.
+	///
+	/// The data is kept in a pseudo-struct `{length: u32, type: u8, data: [u8]}`
+	/// in network byte order.
+	///
+	/// # Panics
+	/// Panics if the index is out of range, memory could not be allocated
+	/// or the length of the response exceeds `u32::MAX - 5`.
+	#[inline]
+	#[allow(clippy::cast_possible_truncation)]
+	pub fn put_binary(&mut self, index: usize, response_type: u8, response: &[u8]) {
+		assert!(index < self.items.len());
+		assert!(response.len()+5 <= u32::MAX as usize);
+		// Sound because of the bounds check above and because zeroed memory
+		// is a valid representation for the contained structs.
+		let dest = &mut self.items[index];
+
+		// Free the old string if there was already one in this slot
+		if !dest.resp.is_null() {
+			unsafe { free(dest.resp as *mut libc::c_void) };
+		}
+
+		// Copy the data into a buffer that can be deallocated with `free()`.
+		// Sound because zeroed memory is a valid representation for `u8`.
+		let mut buffer = unsafe { CBox::<u8>::new_zeroed_slice(5+response.len()).assume_all_init() };
+		buffer[0..4].copy_from_slice(&[
+			(response.len() >> 24) as u8,
+			(response.len() >> 16) as u8,
+			(response.len() >> 8) as u8,
+			response.len() as u8,
+		]);
+		buffer[4] = response_type;
+		buffer[5..].copy_from_slice(response);
+		*dest = PamResponse { resp: CBox::into_raw_unsized(buffer) as *mut _, resp_retcode: 0 };
 	}
 }
 
@@ -151,11 +188,13 @@ mod tests {
 	use super::*;
 
 	fn prepare_test_buffer() -> ResponseBuffer {
-		let mut buffer = ResponseBuffer::new(3).unwrap();
+		let mut buffer = ResponseBuffer::new(4).unwrap();
 		buffer.put(0, Some(CString::new("some response").unwrap()));
 		buffer.put(1, None);
 		buffer.put(2, Some(CString::new("some response").unwrap()));
 		buffer.put(2, Some(CString::new("another response").unwrap()));
+		buffer.put_binary(3, 1, &[]);
+		buffer.put_binary(3, 1, &[0,1,2]);
 		return buffer;
 	}
 

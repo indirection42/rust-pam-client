@@ -11,7 +11,7 @@
  ***********************************************************************/
 
 use std::ffi::{CStr, CString};
-use crate::error::ReturnCode;
+use crate::error::ErrorCode;
 use super::ConversationHandler;
 
 /// Null implementation of `ConversationHandler`
@@ -23,6 +23,7 @@ use super::ConversationHandler;
 /// interaction is possible, no credentials can be stored beforehand and
 /// failing is the only answer if some PAM module needs input.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Conversation {}
 
 impl Conversation {
@@ -40,12 +41,12 @@ impl Default for Conversation {
 }
 
 impl ConversationHandler for Conversation {
-	fn prompt_echo_on(&mut self, _msg: &CStr) -> Result<CString, ReturnCode> {
-		Err(ReturnCode::CONV_ERR)
+	fn prompt_echo_on(&mut self, _msg: &CStr) -> Result<CString, ErrorCode> {
+		Err(ErrorCode::CONV_ERR)
 	}
 
-	fn prompt_echo_off(&mut self, _msg: &CStr) -> Result<CString, ReturnCode> {
-		Err(ReturnCode::CONV_ERR)
+	fn prompt_echo_off(&mut self, _msg: &CStr) -> Result<CString, ErrorCode> {
+		Err(ErrorCode::CONV_ERR)
 	}
 
 	fn text_info(&mut self, _msg: &CStr) {}
@@ -63,6 +64,8 @@ mod tests {
 		let mut c = Conversation::default();
 		assert!(c.prompt_echo_on(&text).is_err());
 		assert!(c.prompt_echo_off(&text).is_err());
+		assert!(c.radio_prompt(&text).is_err());
+		assert!(c.binary_prompt(0, &[]).is_err());
 		c.text_info(&text);
 		c.error_msg(&text);
 	}

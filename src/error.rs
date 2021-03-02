@@ -9,12 +9,12 @@
  ***********************************************************************/
 
 #[doc(no_inline)]
-pub use pam_sys::types::PamReturnCode as ReturnCode;
-use pam_sys::types::{PamHandle};
-use pam_sys::wrapped::strerror;
+pub use crate::{ErrorCode};
+use crate::char_ptr_to_str;
+use pam_sys::pam_handle as PamHandle;
+use pam_sys::pam_strerror;
 
 use std::any::type_name;
-use std::convert::TryFrom;
 use std::cmp::{Eq, PartialEq};
 use std::error;
 use std::hash::{Hash, Hasher};
@@ -29,6 +29,7 @@ use std::io;
 /// the [`!` never type](https://doc.rust-lang.org/std/primitive.never.html)
 /// is stabilized.
 #[derive(Copy, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NoPayload {}
 
 impl Display for NoPayload {
@@ -73,8 +74,9 @@ impl<T> Debug for DisplayHelper<T> {
 /// in this crate. Currently no custom instances are supported.
 #[must_use]
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ErrorWith<T> {
-	code: ReturnCode,
+	code: ErrorCode,
 	msg: String,
 	payload: Option<T>
 }
@@ -84,20 +86,17 @@ impl<T> ErrorWith<T> {
 	///
 	/// Functions that consume a struct can use the payload to transfer back
 	/// ownership in error cases.
-	pub fn with_payload(handle: &mut PamHandle, code: ReturnCode, payload: Option<T>) -> ErrorWith<T> {
-		assert_ne!(code, ReturnCode::SUCCESS);
+	pub fn with_payload(handle: &mut PamHandle, code: ErrorCode, payload: Option<T>) -> ErrorWith<T> {
 		Self {
 			code,
-			msg: match strerror(handle, code) {
-				None => String::new(),
-				Some(s) => s.into()
-			},
+			msg: char_ptr_to_str(unsafe { pam_strerror(handle, code.repr()) })
+				.unwrap_or("").into(),
 			payload
 		}
 	}
 
 	/// The error code.
-	pub const fn code(&self) -> ReturnCode {
+	pub const fn code(&self) -> ErrorCode {
 		self.code
 	}
 
@@ -134,6 +133,7 @@ impl<T> ErrorWith<T> {
 		}
 	}
 
+	/// Maps the error payload to another type
 	pub fn map<U>(self, func: impl FnOnce(T) -> U) -> ErrorWith<U> {
 		ErrorWith::<U> {
 			code: self.code,
@@ -142,6 +142,15 @@ impl<T> ErrorWith<T> {
 				None => None,
 				Some(object) => Some(func(object))
 			}
+		}
+	}
+
+	/// Removes the payload and converts to [`Error`]
+	pub fn into_without_payload(self) -> Error {
+		Error {
+			code: self.code,
+			msg: self.msg,
+			payload: None
 		}
 	}
 }
@@ -172,16 +181,8 @@ pub type Error = ErrorWith<NoPayload>;
 
 impl Error {
 	/// Creates a new [`Error`].
-	pub fn new(handle: &mut PamHandle, code: ReturnCode) -> Error {
-		assert_ne!(code, ReturnCode::SUCCESS);
-		Error {
-			code,
-			msg: match strerror(handle, code) {
-				None => String::new(),
-				Some(s) => s.into()
-			},
-			payload: None
-		}
+	pub fn new(handle: &mut PamHandle, code: ErrorCode) -> Error {
+		Self::with_payload(handle, code, None)
 	}
 
 	/// Adds the payload to the error message and returns a corresponding
@@ -232,43 +233,28 @@ impl<T> Hash for ErrorWith<T> where T: Hash {
 	}
 }
 
-/// Wrapping of a [`ReturnCode`] in a [`Error`] without a PAM context.
+/// Wrapping of a [`ErrorCode`] in a [`Error`] without a PAM context.
 ///
 /// This is used internally to construct [`Error`] instances when no PAM
 /// context is available. These instances won't have a message string, only
 /// a code.
 ///
-/// The conversion only fails on [`ReturnCode::SUCCESS`].
-///
 /// Examples:
 /// ```rust
-/// use std::convert::{TryFrom};
-/// # use pam_client::{Error, ReturnCode};
+/// # use pam_client::{Error, ErrorCode};
 ///
-/// let error = Error::try_from(ReturnCode::ABORT).unwrap();
+/// let error = Error::from(ErrorCode::ABORT);
 /// println!("{:?}", error);
 /// ```
 /// ```rust
-/// use std::convert::{TryInto};
-/// # use pam_client::{Error, ReturnCode};
+/// # use pam_client::{Error, ErrorCode};
 ///
-/// let error: Error = ReturnCode::ABORT.try_into().unwrap();
+/// let error: Error = ErrorCode::ABORT.into();
 /// println!("{:?}", error);
 /// ```
-/// ```rust,should_panic
-/// use std::convert::{TryInto};
-/// # use pam_client::{Error, ReturnCode};
-///
-/// let error: Error = ReturnCode::SUCCESS.try_into().unwrap(); // should panic
-/// ```
-impl TryFrom<ReturnCode> for Error {
-	type Error = ();
-	fn try_from(code: ReturnCode) -> Result<Self, ()> {
-		if code == ReturnCode::SUCCESS {
-			Err(())
-		} else {
-			Ok(Error { code, msg: String::new(), payload: None })
-		}
+impl From<ErrorCode> for Error {
+	fn from(code: ErrorCode) -> Self {
+		Error { code, msg: String::new(), payload: None }
 	}
 }
 
@@ -276,7 +262,7 @@ impl TryFrom<ReturnCode> for Error {
 ///
 /// ```rust
 /// # use std::convert::TryInto;
-/// # use pam_client::{Result, Error, ReturnCode};
+/// # use pam_client::{Result, Error, ErrorCode};
 /// # fn some_succeeding_pam_function() -> Result<()> { Ok(()) }
 /// fn main() -> std::result::Result<(), std::io::Error> {
 ///     some_succeeding_pam_function()?;
@@ -285,9 +271,9 @@ impl TryFrom<ReturnCode> for Error {
 /// ```
 /// ```rust,should_panic
 /// # use std::convert::{Infallible, TryInto};
-/// # use pam_client::{Result, Error, ReturnCode};
+/// # use pam_client::{Result, Error, ErrorCode};
 /// # fn some_failing_pam_function() -> Result<Infallible> {
-/// #     Err(ReturnCode::ABORT.try_into().unwrap())
+/// #     Err(ErrorCode::ABORT.into())
 /// # }
 /// fn main() -> std::result::Result<(), std::io::Error> {
 ///     some_failing_pam_function()?;
@@ -297,9 +283,9 @@ impl TryFrom<ReturnCode> for Error {
 impl<T: Send + Sync + Debug + 'static> From<ErrorWith<T>> for io::Error {
 	fn from(error: ErrorWith<T>) -> Self {
 		io::Error::new(match error.code {
-			ReturnCode::INCOMPLETE | ReturnCode::TRY_AGAIN => io::ErrorKind::Interrupted,
-			ReturnCode::BAD_ITEM | ReturnCode::USER_UNKNOWN => io::ErrorKind::NotFound,
-			ReturnCode::CRED_INSUFFICIENT | ReturnCode::PERM_DENIED => io::ErrorKind::PermissionDenied,
+			ErrorCode::INCOMPLETE => io::ErrorKind::Interrupted,
+			ErrorCode::BAD_ITEM | ErrorCode::USER_UNKNOWN => io::ErrorKind::NotFound,
+			ErrorCode::CRED_INSUFFICIENT | ErrorCode::PERM_DENIED => io::ErrorKind::PermissionDenied,
 			_ => io::ErrorKind::Other
 		}, Box::new(error))
 	}
@@ -314,7 +300,7 @@ mod tests {
 	#[test]
 	fn test_basic() {
 		let context = Context::new("test", None, Conversation::default()).unwrap();
-		let error = Error::new(context.handle(), ReturnCode::CONV_ERR)
+		let error = Error::new(context.handle(), ErrorCode::CONV_ERR)
 			.into_with_payload("foo");
 		assert_eq!(error.payload(), Some(&"foo"));
 		assert!(format!("{:?}", error).len() > 1);
@@ -324,25 +310,15 @@ mod tests {
 		assert_eq!(error.take_payload(), None);
 		let error = error.map(|_| usize::MIN);
 		assert_eq!(error.payload(), None);
+		let error = error.into_without_payload();
+		assert_eq!(error.payload(), None);
 		assert!(format!("{:?} {}", error, error).len() > 4);
 	}
 
 	#[test]
-	#[should_panic="assertion failed"]
-	fn test_invalid() {
-		let context = Context::new("test", None, Conversation::default()).unwrap();
-		let _ = Error::new(context.handle(), ReturnCode::SUCCESS);
-	}
-
-	#[test]
 	fn test_no_msg() {
-		let error = Error::try_from(ReturnCode::BUF_ERR).unwrap();
-		assert_eq!(format!("{}", error), format!("<{}>", (ReturnCode::BUF_ERR as i32)));
+		let error = Error::from(ErrorCode::BUF_ERR);
+		assert_eq!(format!("{}", error), format!("<{}>", (ErrorCode::BUF_ERR as i32)));
 		let _error: ErrorWith<()> = error.into();
-	}
-
-	#[test]
-	fn test_invalid_from() {
-		assert!(Error::try_from(ReturnCode::SUCCESS).is_err());
 	}
 }

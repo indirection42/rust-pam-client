@@ -11,11 +11,12 @@
 use std::iter::FusedIterator;
 use std::ffi::{CStr, CString};
 use std::vec;
-use crate::error::ReturnCode;
+use crate::error::ErrorCode;
 use super::ConversationHandler;
 
 /// Elements in [`Conversation::log`]
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LogEntry {
 	Info(CString),
 	Error(CString),
@@ -39,6 +40,7 @@ pub enum LogEntry {
 /// password, so this handler may fail to authenticate on legacy non-UTF-8
 /// systems when one of the strings contains non-ASCII characters.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Conversation {
 	/// The username to use
 	pub username: String,
@@ -110,12 +112,12 @@ impl ConversationHandler for Conversation {
 		}
 	}
 
-	fn prompt_echo_on(&mut self, _msg: &CStr) -> Result<CString, ReturnCode> {
-		CString::new(self.username.clone()).map_err(|_| ReturnCode::CONV_ERR)
+	fn prompt_echo_on(&mut self, _msg: &CStr) -> Result<CString, ErrorCode> {
+		CString::new(self.username.clone()).map_err(|_| ErrorCode::CONV_ERR)
 	}
 
-	fn prompt_echo_off(&mut self, _msg: &CStr) -> Result<CString, ReturnCode> {
-		CString::new(self.password.clone()).map_err(|_| ReturnCode::CONV_ERR)
+	fn prompt_echo_off(&mut self, _msg: &CStr) -> Result<CString, ErrorCode> {
+		CString::new(self.password.clone()).map_err(|_| ErrorCode::CONV_ERR)
 	}
 
 	fn text_info(&mut self, msg: &CStr) {
@@ -124,5 +126,32 @@ impl ConversationHandler for Conversation {
 
 	fn error_msg(&mut self, msg: &CStr) {
 		self.log.push(LogEntry::Error(msg.to_owned()))
+	}
+
+	fn radio_prompt(&mut self, _msg: &CStr) -> Result<bool, ErrorCode> {
+		Ok(false)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test() {
+		let text = CString::new("test").unwrap();
+		let mut c = Conversation::default();
+		let _ = c.clone();
+		assert!(c.prompt_echo_on(&text).is_ok());
+		assert!(c.prompt_echo_off(&text).is_ok());
+		assert!(c.radio_prompt(&text).ok() == Some(false));
+		assert!(c.binary_prompt(0, &[]).is_err());
+		c.text_info(&text);
+		c.error_msg(&text);
+		assert_eq!(c.log.len(), 2);
+		let v: std::vec::Vec<&CString> = c.errors().collect();
+		assert_eq!(v.len(), 1);
+		let v: std::vec::Vec<&CString> = c.infos().collect();
+		assert_eq!(v.len(), 1);
 	}
 }

@@ -11,7 +11,7 @@
 1. Add the following to your Cargo.toml:
 ```toml
 [dependencies]
-pam-client = "0.2.0"
+pam-client = "0.3.0"
 ```
 
 2. Read the [crate documentation](https://docs.rs/pam-client/)
@@ -39,6 +39,9 @@ This includes in detail:
 - `cli`: by default a conversation handler for command line applications is
   included. Disable this feature if you don't need it to remove a dependency
   on [`rpassword`].
+- `serde`: enable this feature to get `serde` (de-)serialization support for
+  the error, flag and token types and the default conversation handlers.
+  Additionally `EnvList` becomes serializable into `[(OsStr, OsStr)]`.
  
 ## Supported Rust versions
 

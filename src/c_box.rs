@@ -10,10 +10,9 @@
 
 #![allow(dead_code)]
 
-use crate::error::{Error, ReturnCode};
+use crate::error::{Error, ErrorCode};
 use crate::{Result, ExtResult};
 
-use std::convert::TryFrom;
 use std::ptr::{NonNull, drop_in_place};
 use std::cmp::Ordering;
 use std::ops::{Deref, DerefMut};
@@ -147,7 +146,7 @@ impl<T> CBox<T> where T: ?Sized {
 	/// Internal: Builds an `Error` instance with `BUF_ERR` error code
 	#[cold]
 	fn buf_err() -> Error {
-		Error::try_from(ReturnCode::BUF_ERR).unwrap()
+		ErrorCode::BUF_ERR.into()
 	}
 
 	/// Takes ownership of a pointer
@@ -403,14 +402,17 @@ mod tests {
 		let _: CBox<[()]> = unsafe { CBox::from_raw_slice(null_mut(), 1) };
 	}
 
-	/// Check if a boxed slice can be created, is correctly zero-initialized
-	/// and is correctly modifiable.
+	/// Check if a boxed slice can be created, is correctly zero-initialized,
+	/// is correctly modifiable and rewrappable.
 	#[test]
 	fn test_slice() {
 		let uninit_b: CBox<[MaybeUninit<u64>]> = CBox::new_zeroed_slice(3);
 		let mut b = unsafe { uninit_b.assume_all_init() };
 		assert_eq!(*b, [0, 0, 0]);
 		b[1] = u64::MAX;
+		assert_eq!(*b, [0, u64::MAX, 0]);
+		let ptr: *mut u64 = CBox::into_raw_unsized(b);
+		let b = unsafe { CBox::from_raw_slice(ptr, 3) };
 		assert_eq!(*b, [0, u64::MAX, 0]);
 	}
 }

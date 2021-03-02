@@ -14,7 +14,7 @@
 
 use std::io::{self, Write, BufRead};
 use std::ffi::{CStr, CString};
-use crate::error::ReturnCode;
+use crate::error::ErrorCode;
 use super::ConversationHandler;
 
 /// Newline trimming helper function
@@ -41,6 +41,7 @@ fn trim_newline(s: &mut String) {
 /// handler may fail to authenticate on legacy non-UTF-8 systems when the user
 /// input contains non-ASCII characters.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Conversation {
 	info_prefix: String,
 	error_prefix: String,
@@ -88,25 +89,25 @@ impl Default for Conversation {
 }
 
 impl ConversationHandler for Conversation {
-	fn prompt_echo_on(&mut self, msg: &CStr) -> Result<CString, ReturnCode> {
+	fn prompt_echo_on(&mut self, msg: &CStr) -> Result<CString, ErrorCode> {
 		let mut line = String::new();
 		if io::stderr().lock().write_all(msg.to_bytes()).is_err() {
-			return Err(ReturnCode::CONV_ERR);
+			return Err(ErrorCode::CONV_ERR);
 		}
 		match io::stdin().lock().read_line(&mut line) {
-			Err(_) | Ok(0) => Err(ReturnCode::CONV_ERR),
+			Err(_) | Ok(0) => Err(ErrorCode::CONV_ERR),
 			Ok(_) => {
 				trim_newline(&mut line);
-				CString::new(line).map_err(|_| ReturnCode::CONV_ERR)
+				CString::new(line).map_err(|_| ErrorCode::CONV_ERR)
 			}
 		}
 	}
 
-	fn prompt_echo_off(&mut self, msg: &CStr) -> Result<CString, ReturnCode> {
+	fn prompt_echo_off(&mut self, msg: &CStr) -> Result<CString, ErrorCode> {
 		let prompt = msg.to_string_lossy();
 		match rpassword::read_password_from_tty(Some(&prompt)) {
-			Err(_) => Err(ReturnCode::CONV_ERR),
-			Ok(password) => CString::new(password).map_err(|_| ReturnCode::CONV_ERR)
+			Err(_) => Err(ErrorCode::CONV_ERR),
+			Ok(password) => CString::new(password).map_err(|_| ErrorCode::CONV_ERR)
 		}
 	}
 
