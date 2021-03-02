@@ -100,6 +100,14 @@ impl Ord for EnvItem {
 	}
 }
 
+/// Serializes as a (key, value) OsStr tuple.
+#[cfg(feature = "serde")]
+impl serde::Serialize for EnvItem {
+	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		self.key_value().serialize(serializer)
+	}
+}
+
 /// Helper function: determine the length of the array
 unsafe fn count_items<T: ?Sized>(mut ptr: *const *const T) -> usize {
 	let mut result: usize = 0;
@@ -330,6 +338,14 @@ impl Index<&OsStr> for EnvList {
 	/// Panics if the  environment variable is not present in the `EnvList`.
 	fn index(&self, name: &OsStr) -> &Self::Output {
 		self.get(name).expect("environment variable not found")
+	}
+}
+
+/// Serializes as a list of (key, value) OsStr tuples.
+#[cfg(feature = "serde")]
+impl serde::Serialize for EnvList {
+	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		self.0.serialize(serializer)
 	}
 }
 
