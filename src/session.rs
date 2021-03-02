@@ -19,6 +19,7 @@ use pam_sys::{pam_setcred, pam_close_session};
 ///
 /// The representation may not yet be stable, so don't rely on it.
 #[derive(Debug,Clone,Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[must_use]
 pub enum SessionToken {
 	FullSession,

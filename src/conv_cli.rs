@@ -41,6 +41,7 @@ fn trim_newline(s: &mut String) {
 /// handler may fail to authenticate on legacy non-UTF-8 systems when the user
 /// input contains non-ASCII characters.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Conversation {
 	info_prefix: String,
 	error_prefix: String,

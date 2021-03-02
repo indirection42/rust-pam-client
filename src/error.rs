@@ -29,6 +29,7 @@ use std::io;
 /// the [`!` never type](https://doc.rust-lang.org/std/primitive.never.html)
 /// is stabilized.
 #[derive(Copy, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum NoPayload {}
 
 impl Display for NoPayload {
@@ -73,6 +74,7 @@ impl<T> Debug for DisplayHelper<T> {
 /// in this crate. Currently no custom instances are supported.
 #[must_use]
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ErrorWith<T> {
 	code: ErrorCode,
 	msg: String,

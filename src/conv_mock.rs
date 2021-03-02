@@ -16,6 +16,7 @@ use super::ConversationHandler;
 
 /// Elements in [`Conversation::log`]
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LogEntry {
 	Info(CString),
 	Error(CString),
@@ -39,6 +40,7 @@ pub enum LogEntry {
 /// password, so this handler may fail to authenticate on legacy non-UTF-8
 /// systems when one of the strings contains non-ASCII characters.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Conversation {
 	/// The username to use
 	pub username: String,

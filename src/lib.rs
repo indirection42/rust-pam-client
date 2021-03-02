@@ -151,9 +151,10 @@ fn char_ptr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
 	}
 }
 
-#[repr(transparent)]
 bitflags! {
 	/// Flags for most PAM functions
+	#[repr(transparent)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct Flag: c_int {
 		/// Don't generate any messages
 		const SILENT = PAM_SILENT as c_int;
@@ -184,6 +185,7 @@ impl Flag {
 #[allow(non_camel_case_types)]
 #[EnumRepr(type = "c_int")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ErrorCode {
 	OPEN_ERR = PAM_OPEN_ERR as c_int,
 	SYMBOL_ERR = PAM_SYMBOL_ERR as c_int,

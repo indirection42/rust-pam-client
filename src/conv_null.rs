@@ -23,6 +23,7 @@ use super::ConversationHandler;
 /// interaction is possible, no credentials can be stored beforehand and
 /// failing is the only answer if some PAM module needs input.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Conversation {}
 
 impl Conversation {

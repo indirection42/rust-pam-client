@@ -39,6 +39,8 @@ This includes in detail:
 - `cli`: by default a conversation handler for command line applications is
   included. Disable this feature if you don't need it to remove a dependency
   on [`rpassword`].
+- `serde`: enable this feature to get (de-)serialization support for the error,
+  flag and token types and the default conversation handlers.
  
 ## Supported Rust versions
 
