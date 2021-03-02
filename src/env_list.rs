@@ -307,9 +307,9 @@ impl<'a> From<&'a EnvList> for Vec<&'a CStr> {
 }
 
 /// Conversion to a hash map
-impl From<EnvList> for HashMap<OsString, OsString> {
+impl<S> From<EnvList> for HashMap<OsString, OsString, S> where S: ::std::hash::BuildHasher + Default {
 	fn from(list: EnvList) -> Self {
-		let mut map = HashMap::with_capacity(list.len());
+		let mut map = HashMap::<_, _, S>::with_capacity_and_hasher(list.len(), S::default());
 		for (key, value) in list.iter_tuples() {
 			map.insert(key.to_owned(), value.to_owned());
 		}
@@ -318,7 +318,7 @@ impl From<EnvList> for HashMap<OsString, OsString> {
 }
 
 /// Reference conversion to a referencing hash map
-impl<'a> From<&'a EnvList> for HashMap<&'a OsStr, &'a OsStr> {
+impl<'a, S> From<&'a EnvList> for HashMap<&'a OsStr, &'a OsStr, S> where S: ::std::hash::BuildHasher + Default {
 	fn from(list: &'a EnvList) -> Self {
 		list.iter_tuples().collect()
 	}
