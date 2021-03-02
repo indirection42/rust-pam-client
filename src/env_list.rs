@@ -270,6 +270,18 @@ impl From<EnvList> for Vec<(OsString, OsString)> {
 	}
 }
 
+/// Conversion to a vector of (key, value) tuples.
+impl<'a> From<&'a EnvList> for Vec<(&'a OsStr, &'a OsStr)> {
+	fn from(list: &'a EnvList) -> Self {
+		let mut vec = Vec::new();
+		vec.reserve_exact(list.len());
+		for (key, value) in list.iter_tuples() {
+			vec.push((key, value))
+		}
+		vec
+	}
+}
+
 /// Conversion to a vector of "key=value" `CString`s.
 impl From<EnvList> for Vec<CString> {
 	fn from(list: EnvList) -> Self {
@@ -282,12 +294,35 @@ impl From<EnvList> for Vec<CString> {
 	}
 }
 
+/// Conversion to a vector of "key=value" `CString`s.
+impl<'a> From<&'a EnvList> for Vec<&'a CStr> {
+	fn from(list: &'a EnvList) -> Self {
+		let mut vec = Vec::new();
+		vec.reserve_exact(list.len());
+		for item in list.0.iter() {
+			vec.push(item.as_cstr())
+		}
+		vec
+	}
+}
+
 /// Conversion to a hash map
 impl From<EnvList> for HashMap<OsString, OsString> {
 	fn from(list: EnvList) -> Self {
 		let mut map = HashMap::with_capacity(list.len());
 		for (key, value) in list.iter_tuples() {
 			map.insert(key.to_owned(), value.to_owned());
+		}
+		map
+	}
+}
+
+/// Reference conversion to a referencing hash map
+impl<'a> From<&'a EnvList> for HashMap<&'a OsStr, &'a OsStr> {
+	fn from(list: &'a EnvList) -> Self {
+		let mut map = HashMap::with_capacity(list.len());
+		for (key, value) in list.iter_tuples() {
+			map.insert(key, value);
 		}
 		map
 	}
