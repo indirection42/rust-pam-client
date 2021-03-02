@@ -652,10 +652,22 @@ mod tests {
 		assert_eq!(env.as_ref().partial_cmp(context.envlist().as_ref()), Some(std::cmp::Ordering::Equal));
 		assert_eq!(env.as_ref().cmp(context.envlist().as_ref()), std::cmp::Ordering::Equal);
 		assert_eq!(&env[&OsString::from("TEST".to_string())], "1");
-		let list: std::vec::Vec<(std::ffi::OsString, std::ffi::OsString)> = context.envlist().into();
+		assert_eq!(env.len(), env.iter_tuples().size_hint().0);
+		let list: std::vec::Vec<&CStr> = (&env).into();
+		assert_eq!(list.len(), env.len());
+		let list: std::vec::Vec<(&OsStr, _)> = (&env).into();
+		assert_eq!(list.len(), env.len());
+		let map:std::collections::HashMap<&OsStr, _> = (&env).into();
+		assert_eq!(map.len(), map.len());
+		assert_eq!(map.get(&OsString::from("TEST".to_string()).as_ref()), Some(&OsString::from("1".to_string()).as_ref()));
+		assert!(env.to_string().contains("TEST=1"));
+		let list: std::vec::Vec<(std::ffi::OsString, _)> = context.envlist().into();
 		assert_eq!(list.len(), env.len());
 		let list: std::vec::Vec<CString> = context.envlist().into();
 		assert_eq!(list.len(), env.len());
+		let map: std::collections::HashMap<_, _> = context.envlist().into();
+		assert_eq!(map.len(), env.len());
+		assert_eq!(map.get(&OsString::from("TEST".to_string())), Some(&OsString::from("1".to_string())));
 		drop(context)
 	}
 
