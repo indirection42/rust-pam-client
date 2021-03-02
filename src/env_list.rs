@@ -280,11 +280,7 @@ impl From<EnvList> for Vec<(OsString, OsString)> {
 /// Reference conversion to a vector of (&key, &value) tuples.
 impl<'a> From<&'a EnvList> for Vec<(&'a OsStr, &'a OsStr)> {
 	fn from(list: &'a EnvList) -> Self {
-		let mut vec = Vec::with_capacity(list.len());
-		for (key, value) in list.iter_tuples() {
-			vec.push((key, value))
-		}
-		vec
+		list.iter_tuples().collect()
 	}
 }
 
