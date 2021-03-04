@@ -12,10 +12,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.            *
  ***********************************************************************/
 
-use std::io::{self, Write, BufRead};
-use std::ffi::{CStr, CString};
-use crate::error::ErrorCode;
 use super::ConversationHandler;
+use crate::error::ErrorCode;
+use std::ffi::{CStr, CString};
+use std::io::{self, BufRead, Write};
 
 /// Newline trimming helper function
 fn trim_newline(s: &mut String) {
@@ -107,7 +107,7 @@ impl ConversationHandler for Conversation {
 		let prompt = msg.to_string_lossy();
 		match rpassword::read_password_from_tty(Some(&prompt)) {
 			Err(_) => Err(ErrorCode::CONV_ERR),
-			Ok(password) => CString::new(password).map_err(|_| ErrorCode::CONV_ERR)
+			Ok(password) => CString::new(password).map_err(|_| ErrorCode::CONV_ERR),
 		}
 	}
 

@@ -8,23 +8,26 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.            *
  ***********************************************************************/
 
-use crate::{ConversationHandler, char_ptr_to_str};
-use crate::ffi::to_pam_conv;
-use crate::error::{ErrorCode, Error};
-use crate::session::{Session, SessionToken};
 use crate::env_list::EnvList;
+use crate::error::{Error, ErrorCode};
+use crate::ffi::to_pam_conv;
+use crate::session::{Session, SessionToken};
+use crate::{char_ptr_to_str, ConversationHandler};
 extern crate libc;
 extern crate pam_sys;
 
-use crate::{Result, ExtResult, Flag, PAM_SUCCESS};
+use crate::{ExtResult, Flag, Result, PAM_SUCCESS};
 
-use std::ffi::{CStr, CString};
-use std::{ptr, slice};
-use std::cell::Cell;
-use std::mem::take;
 use libc::{c_char, c_int, c_void};
 use pam_sys::pam_handle as PamHandle;
-use pam_sys::{pam_start, pam_end, pam_get_item, pam_set_item, pam_setcred, pam_authenticate, pam_acct_mgmt, pam_chauthtok, pam_open_session, pam_close_session, pam_getenvlist, pam_getenv, pam_putenv};
+use pam_sys::{
+	pam_acct_mgmt, pam_authenticate, pam_chauthtok, pam_close_session, pam_end, pam_get_item,
+	pam_getenv, pam_getenvlist, pam_open_session, pam_putenv, pam_set_item, pam_setcred, pam_start,
+};
+use std::cell::Cell;
+use std::ffi::{CStr, CString};
+use std::mem::take;
+use std::{ptr, slice};
 
 /// Internal: Builds getters/setters for string-typed PAM items.
 macro_rules! impl_pam_str_item {
@@ -57,7 +60,7 @@ macro_rules! impl_pam_str_item {
 /// Uses const pointers as `pam_set_item` makes a copy of the data and
 /// never mutates through the pointers and `pam_get_item` by API contract
 /// states that returned data should not be modified.
-#[cfg(any(target_os="linux",doc))]
+#[cfg(any(target_os = "linux", doc))]
 #[repr(C)]
 #[derive(Debug)]
 struct XAuthData {
@@ -76,15 +79,20 @@ struct XAuthData {
 /// Manages a PAM context holding the transaction state.
 ///
 /// See the [crate documentation][`crate`] for examples.
-pub struct Context<ConvT> where ConvT: ConversationHandler {
+pub struct Context<ConvT>
+where
+	ConvT: ConversationHandler,
+{
 	handle: Cell<*mut PamHandle>,
 	// Needs to be boxed, as we give a long-living pointer to it to C code.
 	conversation: Box<ConvT>,
-	last_status: Cell<c_int>
+	last_status: Cell<c_int>,
 }
 
-impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
-
+impl<ConvT> Context<ConvT>
+where
+	ConvT: ConversationHandler,
+{
 	/// Creates a PAM context and starts a PAM transaction.
 	///
 	/// # Parameters
@@ -116,7 +124,11 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// conversation handler.
 	///
 	/// See [`new()`][`Self::new()`] for details.
-	pub fn from_boxed_conv(service: &str, username: Option<&str>, mut boxed_conv: Box<ConvT>) -> Result<Self> {
+	pub fn from_boxed_conv(
+		service: &str,
+		username: Option<&str>,
+		mut boxed_conv: Box<ConvT>,
+	) -> Result<Self> {
 		let mut handle: *mut PamHandle = ptr::null_mut();
 
 		let c_service = CString::new(service).map_err(|_| Error::from(ErrorCode::BUF_ERR))?;
@@ -129,7 +141,14 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 		let pam_conv = to_pam_conv(&mut boxed_conv);
 
 		// Start the PAM context
-		match unsafe { pam_start(c_service.as_ptr(), c_username.as_ref().map_or(ptr::null(), |s| s.as_ptr()), &pam_conv, &mut handle) } {
+		match unsafe {
+			pam_start(
+				c_service.as_ptr(),
+				c_username.as_ref().map_or(ptr::null(), |s| s.as_ptr()),
+				&pam_conv,
+				&mut handle,
+			)
+		} {
 			PAM_SUCCESS => {
 				// Should not happen, but for safetys sake check for a null
 				// pointer on success.
@@ -143,8 +162,10 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 						last_status: Cell::new(PAM_SUCCESS),
 					})
 				}
-			},
-			code => Err(ErrorCode::from_repr(code).unwrap_or(ErrorCode::ABORT).into())
+			}
+			code => Err(ErrorCode::from_repr(code)
+				.unwrap_or(ErrorCode::ABORT)
+				.into()),
 		}
 	}
 
@@ -166,7 +187,10 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 		self.last_status.set(status);
 		match status {
 			PAM_SUCCESS => Ok(()),
-			code => Err(Error::new(self.handle(), ErrorCode::from_repr(code).unwrap_or(ErrorCode::ABORT)))
+			code => Err(Error::new(
+				self.handle(),
+				ErrorCode::from_repr(code).unwrap_or(ErrorCode::ABORT),
+			)),
 		}
 	}
 
@@ -218,20 +242,51 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 		self.wrap_pam_return(pam_set_item(self.handle(), item_type, &*value))
 	}
 
-	impl_pam_str_item!(service, set_service, pam_sys::PAM_SERVICE, "the service name");
+	impl_pam_str_item!(
+		service,
+		set_service,
+		pam_sys::PAM_SERVICE,
+		"the service name"
+	);
 	impl_pam_str_item!(user, set_user, pam_sys::PAM_USER, "the username of the entity under whose identity service will be given",
 		"This value can be mapped by any module in the PAM stack, so don't assume it stays unchanged after calling other methods on `Self`.");
-	impl_pam_str_item!(user_prompt, set_user_prompt, pam_sys::PAM_USER_PROMPT, "the string used when prompting for a user's name");
+	impl_pam_str_item!(
+		user_prompt,
+		set_user_prompt,
+		pam_sys::PAM_USER_PROMPT,
+		"the string used when prompting for a user's name"
+	);
 	impl_pam_str_item!(tty, set_tty, pam_sys::PAM_TTY, "the terminal name");
-	impl_pam_str_item!(ruser, set_ruser, pam_sys::PAM_RUSER, "the requesting user name");
-	impl_pam_str_item!(rhost, set_rhost, pam_sys::PAM_RHOST, "the requesting hostname");
-	#[cfg(any(target_os="linux",doc))]
-	impl_pam_str_item!(authtok_type, set_authtok_type, pam_sys::PAM_AUTHTOK_TYPE, "the default password type in the prompt (Linux specific)", "E.g. \"UNIX\" for \"Enter UNIX password:\"");
-	#[cfg(any(target_os="linux",doc))]
-	impl_pam_str_item!(xdisplay, set_xdisplay, pam_sys::PAM_XDISPLAY, "the name of the X display (Linux specific)");
+	impl_pam_str_item!(
+		ruser,
+		set_ruser,
+		pam_sys::PAM_RUSER,
+		"the requesting user name"
+	);
+	impl_pam_str_item!(
+		rhost,
+		set_rhost,
+		pam_sys::PAM_RHOST,
+		"the requesting hostname"
+	);
+	#[cfg(any(target_os = "linux", doc))]
+	impl_pam_str_item!(
+		authtok_type,
+		set_authtok_type,
+		pam_sys::PAM_AUTHTOK_TYPE,
+		"the default password type in the prompt (Linux specific)",
+		"E.g. \"UNIX\" for \"Enter UNIX password:\""
+	);
+	#[cfg(any(target_os = "linux", doc))]
+	impl_pam_str_item!(
+		xdisplay,
+		set_xdisplay,
+		pam_sys::PAM_XDISPLAY,
+		"the name of the X display (Linux specific)"
+	);
 
 	/// Returns X authentication data as (name, value) pair (Linux specific).
-	#[cfg(any(target_os="linux",doc))]
+	#[cfg(any(target_os = "linux", doc))]
 	pub fn xauthdata(&self) -> Result<(&CStr, &[u8])> {
 		let ptr = self.get_item(pam_sys::PAM_XAUTHDATA as c_int)? as *const XAuthData;
 		if ptr.is_null() {
@@ -242,15 +297,16 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 		// Safety checks: validate the length are non-negative and that
 		// the pointers are non-null
 		if data.namelen < 0 || data.datalen < 0 || data.name.is_null() || data.data.is_null() {
-			return Err(Error::new(self.handle(), ErrorCode::BUF_ERR))
+			return Err(Error::new(self.handle(), ErrorCode::BUF_ERR));
 		}
 
 		#[allow(clippy::cast_sign_loss)]
 		Ok((
-			CStr::from_bytes_with_nul(
-				unsafe { slice::from_raw_parts(data.name as *const u8, data.namelen as usize + 1) }
-			).map_err(|_| Error::new(self.handle(), ErrorCode::BUF_ERR))?,
-			unsafe { slice::from_raw_parts(data.data as *const u8, data.datalen as usize) }
+			CStr::from_bytes_with_nul(unsafe {
+				slice::from_raw_parts(data.name as *const u8, data.namelen as usize + 1)
+			})
+			.map_err(|_| Error::new(self.handle(), ErrorCode::BUF_ERR))?,
+			unsafe { slice::from_raw_parts(data.data as *const u8, data.datalen as usize) },
 		))
 	}
 
@@ -260,7 +316,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// Expected error codes include:
 	/// - `BAD_ITEM` – Unsupported item
 	/// - `BUF_ERR` – Memory buffer error
-	#[cfg(any(target_os="linux",doc))]
+	#[cfg(any(target_os = "linux", doc))]
 	pub fn set_xauthdata(&mut self, value: Option<(&CStr, &[u8])>) -> Result<()> {
 		match value {
 			None => unsafe { self.set_item(pam_sys::PAM_XAUTHDATA as c_int, ptr::null()) },
@@ -268,7 +324,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 				let name_bytes = name.to_bytes_with_nul();
 
 				if name_bytes.len() > i32::MAX as usize || data.len() > i32::MAX as usize {
-					return Err(Error::new(self.handle(), ErrorCode::BUF_ERR))
+					return Err(Error::new(self.handle(), ErrorCode::BUF_ERR));
 				}
 
 				#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
@@ -276,9 +332,14 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 					namelen: name_bytes.len() as i32 - 1,
 					name: name_bytes.as_ptr() as *const _,
 					datalen: data.len() as i32,
-					data: data.as_ptr() as *const _
+					data: data.as_ptr() as *const _,
 				};
-				unsafe { self.set_item(pam_sys::PAM_XAUTHDATA as c_int, &xauthdata as *const _ as *const c_void) }
+				unsafe {
+					self.set_item(
+						pam_sys::PAM_XAUTHDATA as c_int,
+						&xauthdata as *const _ as *const c_void,
+					)
+				}
 			}
 		}
 	}
@@ -292,7 +353,7 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	pub fn getenv<'a>(&'a self, name: &str) -> Option<&'a str> {
 		let c_name = match CString::new(name) {
 			Err(_) => return None,
-			Ok(s) => s
+			Ok(s) => s,
 		};
 		char_ptr_to_str(unsafe { pam_getenv(self.handle(), c_name.as_ptr()) })
 	}
@@ -401,7 +462,9 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// - `SYSTEM_ERR` – Other system error
 	/// - `USER_UNKNOWN` – User not known
 	pub fn reinitialize_credentials(&mut self, flags: Flag) -> Result<()> {
-		self.wrap_pam_return(unsafe { pam_setcred(self.handle(), (Flag::REINITIALIZE_CRED|flags).bits()) })
+		self.wrap_pam_return(unsafe {
+			pam_setcred(self.handle(), (Flag::REINITIALIZE_CRED | flags).bits())
+		})
 	}
 
 	/// Changes a users password.
@@ -463,10 +526,16 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// [authorized]: `Self::acct_mgmt()`
 	#[rustversion::attr(since(1.48), doc(alias = "pam_open_session"))]
 	pub fn open_session(&mut self, flags: Flag) -> Result<Session<ConvT>> {
-		self.wrap_pam_return(unsafe { pam_setcred(self.handle(), (Flag::ESTABLISH_CRED|flags).bits()) })?;
+		self.wrap_pam_return(unsafe {
+			pam_setcred(self.handle(), (Flag::ESTABLISH_CRED | flags).bits())
+		})?;
 
-		if let Err(e) = self.wrap_pam_return(unsafe { pam_open_session(self.handle(), flags.bits()) }) {
-			let _ = self.wrap_pam_return(unsafe { pam_setcred(self.handle(), (Flag::DELETE_CRED|flags).bits()) });
+		if let Err(e) =
+			self.wrap_pam_return(unsafe { pam_open_session(self.handle(), flags.bits()) })
+		{
+			let _ = self.wrap_pam_return(unsafe {
+				pam_setcred(self.handle(), (Flag::DELETE_CRED | flags).bits())
+			});
 			return Err(e);
 		}
 
@@ -474,9 +543,13 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 		// to circumvent different assumptions of PAM modules about when
 		// `setcred` is called, as the documentations of different PAM
 		// implementations differ. (OpenSSH does something similar too).
-		if let Err(e) = self.wrap_pam_return(unsafe { pam_setcred(self.handle(), (Flag::REINITIALIZE_CRED|flags).bits()) }) {
+		if let Err(e) = self.wrap_pam_return(unsafe {
+			pam_setcred(self.handle(), (Flag::REINITIALIZE_CRED | flags).bits())
+		}) {
 			let _ = self.wrap_pam_return(unsafe { pam_close_session(self.handle(), flags.bits()) });
-			let _ = self.wrap_pam_return(unsafe { pam_setcred(self.handle(), (Flag::DELETE_CRED|flags).bits()) });
+			let _ = self.wrap_pam_return(unsafe {
+				pam_setcred(self.handle(), (Flag::DELETE_CRED | flags).bits())
+			});
 			return Err(e);
 		}
 
@@ -506,21 +579,23 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler {
 	/// [authenticated]: Self::authenticate()
 	/// [authorized]: Self::acct_mgmt()
 	pub fn open_pseudo_session(&mut self, flags: Flag) -> Result<Session<ConvT>> {
-		self.wrap_pam_return(unsafe { pam_setcred(self.handle(), (Flag::ESTABLISH_CRED|flags).bits()) })?;
+		self.wrap_pam_return(unsafe {
+			pam_setcred(self.handle(), (Flag::ESTABLISH_CRED | flags).bits())
+		})?;
 
 		Ok(Session::new(self, false))
 	}
 
 	/// Resume a session from a [`SessionToken`].
 	pub fn unleak_session(&mut self, token: SessionToken) -> Session<ConvT> {
-		Session::new(
-			self,
-			matches!(token, SessionToken::FullSession)
-		)
+		Session::new(self, matches!(token, SessionToken::FullSession))
 	}
 }
 
-impl<ConvT> Context<ConvT> where ConvT: ConversationHandler + Default {
+impl<ConvT> Context<ConvT>
+where
+	ConvT: ConversationHandler + Default,
+{
 	/// Swap the conversation handler.
 	///
 	/// Consumes the context, returns the new context and the old conversation
@@ -532,7 +607,10 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler + Default {
 	/// - `BUF_ERR` – Memory buffer error
 	///
 	/// The error payload contains the old context and the new handler.
-	pub fn replace_conversation<T: ConversationHandler>(self, new_handler: T) -> ExtResult<(Context<T>, ConvT), (Self, T)> {
+	pub fn replace_conversation<T: ConversationHandler>(
+		self,
+		new_handler: T,
+	) -> ExtResult<(Context<T>, ConvT), (Self, T)> {
 		match self.replace_conversation_boxed(new_handler.into()) {
 			Ok((context, boxed_old_conv)) => Ok((context, *boxed_old_conv)),
 			Err(error) => Err(error.map(|(ctx, b_conv)| (ctx, *b_conv))),
@@ -542,20 +620,28 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler + Default {
 	/// Swap the conversation handler (boxed variant).
 	///
 	/// See [`replace_conversation()`][`Self::replace_conversation()`].
-	pub fn replace_conversation_boxed<T: ConversationHandler>(mut self, mut new_handler: Box<T>) -> ExtResult<(Context<T>, Box<ConvT>), (Self, Box<T>)> {
+	pub fn replace_conversation_boxed<T: ConversationHandler>(
+		mut self,
+		mut new_handler: Box<T>,
+	) -> ExtResult<(Context<T>, Box<ConvT>), (Self, Box<T>)> {
 		// Get current username for handler initialization
 		let username = match self.user() {
 			Ok(u) => Some(u),
 			Err(e) => {
 				if e.code() != ErrorCode::PERM_DENIED {
-					return Err(e.into_with_payload((self, new_handler)))
+					return Err(e.into_with_payload((self, new_handler)));
 				}
 				None
 			}
 		};
 		// Create callback struct for C code
 		let pam_conv = to_pam_conv(&mut new_handler);
-		if let Err(e) = unsafe { self.set_item(pam_sys::PAM_CONV as c_int, &pam_conv as *const _ as *const c_void) } {
+		if let Err(e) = unsafe {
+			self.set_item(
+				pam_sys::PAM_CONV as c_int,
+				&pam_conv as *const _ as *const c_void,
+			)
+		} {
 			Err(e.into_with_payload((self, new_handler)))
 		} else {
 			// Initialize handler
@@ -565,16 +651,19 @@ impl<ConvT> Context<ConvT> where ConvT: ConversationHandler + Default {
 				Context::<T> {
 					handle: Cell::new(self.handle.replace(ptr::null_mut())),
 					conversation: new_handler,
-					last_status: Cell::new(self.last_status.replace(PAM_SUCCESS))
+					last_status: Cell::new(self.last_status.replace(PAM_SUCCESS)),
 				},
-				take(&mut self.conversation)
+				take(&mut self.conversation),
 			))
 		}
 	}
 }
 
 /// Destructor ending the PAM transaction and releasing the PAM context
-impl<ConvT> Drop for Context<ConvT> where ConvT: ConversationHandler {
+impl<ConvT> Drop for Context<ConvT>
+where
+	ConvT: ConversationHandler,
+{
 	#[rustversion::attr(since(1.48), doc(alias = "pam_end"))]
 	fn drop(&mut self) {
 		unsafe { pam_end(self.handle(), self.last_status.get()) };
@@ -593,11 +682,8 @@ mod tests {
 
 	#[test]
 	fn test_basic() {
-		let mut context = Context::new(
-			"test",
-			Some("user"),
-			crate::conv_null::Conversation::new()
-		).unwrap();
+		let mut context =
+			Context::new("test", Some("user"), crate::conv_null::Conversation::new()).unwrap();
 		// Check if user name and service name are correctly saved
 		assert_eq!(context.service().unwrap(), "test");
 		assert_eq!(context.user().unwrap(), "user");
@@ -611,7 +697,7 @@ mod tests {
 		context.set_rhost(Some("nowhere")).unwrap();
 		assert_eq!(context.rhost().unwrap(), "nowhere");
 		// Check linux specific items
-		#[cfg(target_os="linux")]
+		#[cfg(target_os = "linux")]
 		{
 			context.set_authtok_type(Some("TEST")).unwrap();
 			assert_eq!(context.authtok_type().unwrap(), "TEST");
@@ -620,7 +706,9 @@ mod tests {
 			let xauthname = CString::new("TEST_DATA").unwrap();
 			let xauthdata = [];
 			let _ = context.xauthdata();
-			context.set_xauthdata(Some((&xauthname, &xauthdata))).unwrap();
+			context
+				.set_xauthdata(Some((&xauthname, &xauthdata)))
+				.unwrap();
 			let (resultname, resultdata) = context.xauthdata().unwrap();
 			assert_eq!(resultname, xauthname.as_c_str());
 			assert_eq!(resultdata, &xauthdata);
@@ -643,7 +731,7 @@ mod tests {
 			if string.starts_with("TEST=") {
 				assert_eq!(string, "TEST=1");
 			} else if string.starts_with("TEST2=") {
-				let (_,v): (&OsStr, &OsStr) = item.into();
+				let (_, v): (&OsStr, &OsStr) = item.into();
 				assert_eq!(v.to_string_lossy(), "2");
 			}
 			let _ = item.as_ref();
@@ -651,17 +739,26 @@ mod tests {
 		assert_eq!(env.is_empty(), false);
 		assert_eq!(env.len(), env.as_ref().len());
 		assert_eq!(env.as_ref(), context.envlist().as_ref());
-		assert_eq!(env.as_ref().partial_cmp(context.envlist().as_ref()), Some(std::cmp::Ordering::Equal));
-		assert_eq!(env.as_ref().cmp(context.envlist().as_ref()), std::cmp::Ordering::Equal);
+		assert_eq!(
+			env.as_ref().partial_cmp(context.envlist().as_ref()),
+			Some(std::cmp::Ordering::Equal)
+		);
+		assert_eq!(
+			env.as_ref().cmp(context.envlist().as_ref()),
+			std::cmp::Ordering::Equal
+		);
 		assert_eq!(&env[&OsString::from("TEST".to_string())], "1");
 		assert_eq!(env.len(), env.iter_tuples().size_hint().0);
 		let list: std::vec::Vec<&CStr> = (&env).into();
 		assert_eq!(list.len(), env.len());
 		let list: std::vec::Vec<(&OsStr, _)> = (&env).into();
 		assert_eq!(list.len(), env.len());
-		let map:std::collections::HashMap<&OsStr, _> = (&env).into();
+		let map: std::collections::HashMap<&OsStr, _> = (&env).into();
 		assert_eq!(map.len(), map.len());
-		assert_eq!(map.get(&OsString::from("TEST".to_string()).as_ref()), Some(&OsString::from("1".to_string()).as_ref()));
+		assert_eq!(
+			map.get(&OsString::from("TEST".to_string()).as_ref()),
+			Some(&OsString::from("1".to_string()).as_ref())
+		);
 		assert!(env.to_string().contains("TEST=1"));
 		let list: std::vec::Vec<(std::ffi::OsString, _)> = context.envlist().into();
 		assert_eq!(list.len(), env.len());
@@ -669,21 +766,23 @@ mod tests {
 		assert_eq!(list.len(), env.len());
 		let map: std::collections::HashMap<_, _> = context.envlist().into();
 		assert_eq!(map.len(), env.len());
-		assert_eq!(map.get(&OsString::from("TEST".to_string())), Some(&OsString::from("1".to_string())));
+		assert_eq!(
+			map.get(&OsString::from("TEST".to_string())),
+			Some(&OsString::from("1".to_string()))
+		);
 		drop(context)
 	}
 
 	#[test]
 	fn test_conv_replace() {
-		let mut context = Context::new(
-			"test",
-			Some("user"),
-			crate::conv_null::Conversation::new()
-		).unwrap();
+		let mut context =
+			Context::new("test", Some("user"), crate::conv_null::Conversation::new()).unwrap();
 		// Set username
 		context.set_user(Some("anybody")).unwrap();
 		// Replace conversation handler
-		let (mut context, old_conv) = context.replace_conversation(crate::conv_mock::Conversation::default()).unwrap();
+		let (mut context, old_conv) = context
+			.replace_conversation(crate::conv_mock::Conversation::default())
+			.unwrap();
 		// Check if set username was propagated to the new handler
 		assert_eq!(context.conversation().username, "anybody");
 		context.set_user(None).unwrap();
@@ -699,13 +798,14 @@ mod tests {
 	/// Currently it is only checked if some function crashes
 	/// or panics, not if the authentication succeeds.
 	#[test]
-	#[cfg_attr(not(feature="full_test"), ignore)]
+	#[cfg_attr(not(feature = "full_test"), ignore)]
 	fn test_full() {
 		let mut context = Context::new(
 			"test_rust_pam_client",
 			Some("nobody"),
-			crate::conv_null::Conversation::new()
-		).unwrap();
+			crate::conv_null::Conversation::new(),
+		)
+		.unwrap();
 		let _ = context.authenticate(Flag::SILENT);
 		let _ = context.acct_mgmt(Flag::SILENT);
 		let _ = context.chauthtok(Flag::CHANGE_EXPIRED_AUTHTOK);

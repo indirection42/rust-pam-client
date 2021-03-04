@@ -8,39 +8,45 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.            *
  ***********************************************************************/
 
+use crate::env_list::EnvList;
 use crate::Context;
 use crate::ConversationHandler;
-use crate::env_list::EnvList;
-use crate::{Result, ExtResult, Flag};
+use crate::{ExtResult, Flag, Result};
 
-use pam_sys::{pam_setcred, pam_close_session};
+use pam_sys::{pam_close_session, pam_setcred};
 
 /// Token type to resume RAII handling of a session that was released with [`Session::leak()`].
 ///
 /// The representation may not yet be stable, so don't rely on it.
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[must_use]
 pub enum SessionToken {
 	FullSession,
-	PseudoSession
+	PseudoSession,
 }
 
 /// An active PAM session or pseudo session
 #[must_use]
-pub struct Session<'a, ConvT> where ConvT: ConversationHandler {
+pub struct Session<'a, ConvT>
+where
+	ConvT: ConversationHandler,
+{
 	context: &'a mut Context<ConvT>,
 	session_active: bool,
-	credentials_active: bool
+	credentials_active: bool,
 }
 
-impl<'a, ConvT> Session<'a, ConvT> where ConvT: ConversationHandler {
+impl<'a, ConvT> Session<'a, ConvT>
+where
+	ConvT: ConversationHandler,
+{
 	/// Constructs a `Session` object for a PAM context.
 	pub(crate) fn new(context: &'a mut Context<ConvT>, real: bool) -> Session<'a, ConvT> {
 		Self {
 			context,
 			session_active: real,
-			credentials_active: true
+			credentials_active: true,
 		}
 	}
 
@@ -60,7 +66,9 @@ impl<'a, ConvT> Session<'a, ConvT> where ConvT: ConversationHandler {
 	/// - `ReturnCode::SYSTEM_ERR`: Other system error
 	/// - `ReturnCode::USER_UNKNOWN`: User not known
 	pub fn refresh_credentials(&mut self, flags: Flag) -> Result<()> {
-		self.context.wrap_pam_return(unsafe { pam_setcred(self.context.handle(), (Flag::REFRESH_CRED|flags).bits()) })
+		self.context.wrap_pam_return(unsafe {
+			pam_setcred(self.context.handle(), (Flag::REFRESH_CRED | flags).bits())
+		})
 	}
 
 	/// Fully reinitializes the user's credentials.
@@ -69,7 +77,12 @@ impl<'a, ConvT> Session<'a, ConvT> where ConvT: ConversationHandler {
 	///
 	/// See [`Context::reinitialize_credentials()`] for more information.
 	pub fn reinitialize_credentials(&mut self, flags: Flag) -> Result<()> {
-		self.context.wrap_pam_return(unsafe { pam_setcred(self.context.handle(), (Flag::REINITIALIZE_CRED|flags).bits()) })
+		self.context.wrap_pam_return(unsafe {
+			pam_setcred(
+				self.context.handle(),
+				(Flag::REINITIALIZE_CRED | flags).bits(),
+			)
+		})
 	}
 
 	/// Converts the session into a [`SessionToken`] without closing it.
@@ -86,7 +99,11 @@ impl<'a, ConvT> Session<'a, ConvT> where ConvT: ConversationHandler {
 	/// this behaviour cannot be safely relied upon, it is recommended to
 	/// close the session within the same PAM context.
 	pub fn leak(mut self) -> SessionToken {
-		let result = if self.session_active { SessionToken::FullSession } else { SessionToken::PseudoSession };
+		let result = if self.session_active {
+			SessionToken::FullSession
+		} else {
+			SessionToken::PseudoSession
+		};
 		self.session_active = false;
 		self.credentials_active = false;
 		result
@@ -150,7 +167,8 @@ impl<'a, ConvT> Session<'a, ConvT> where ConvT: ConversationHandler {
 			self.session_active = false;
 		}
 		if self.credentials_active {
-			let status = unsafe { pam_setcred(self.context.handle(), (Flag::DELETE_CRED|flags).bits()) };
+			let status =
+				unsafe { pam_setcred(self.context.handle(), (Flag::DELETE_CRED | flags).bits()) };
 			if let Err(e) = self.context.wrap_pam_return(status) {
 				return Err(e.into_with_payload(self));
 			}
@@ -161,7 +179,10 @@ impl<'a, ConvT> Session<'a, ConvT> where ConvT: ConversationHandler {
 }
 
 /// Destructor ending the PAM session and deleting established credentials
-impl<'a, ConvT> Drop for Session<'a, ConvT> where ConvT: ConversationHandler {
+impl<'a, ConvT> Drop for Session<'a, ConvT>
+where
+	ConvT: ConversationHandler,
+{
 	fn drop(&mut self) {
 		if self.session_active {
 			let status = unsafe { pam_close_session(self.context.handle(), Flag::NONE.bits()) };
@@ -169,7 +190,12 @@ impl<'a, ConvT> Drop for Session<'a, ConvT> where ConvT: ConversationHandler {
 			let _ = self.context.wrap_pam_return(status);
 		}
 		if self.credentials_active {
-			let status = unsafe { pam_setcred(self.context.handle(), (Flag::DELETE_CRED|Flag::SILENT).bits()) };
+			let status = unsafe {
+				pam_setcred(
+					self.context.handle(),
+					(Flag::DELETE_CRED | Flag::SILENT).bits(),
+				)
+			};
 			self.credentials_active = false;
 			let _ = self.context.wrap_pam_return(status);
 		}
@@ -187,8 +213,9 @@ mod tests {
 		let mut context = Context::new(
 			"test",
 			Some("user"),
-			crate::conv_null::Conversation::default()
-		).unwrap();
+			crate::conv_null::Conversation::default(),
+		)
+		.unwrap();
 		let mut session = context.unleak_session(token);
 		let _ = session.putenv("TEST=1");
 		let _ = session.getenv("TEST");

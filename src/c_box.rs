@@ -11,22 +11,22 @@
 #![allow(dead_code)]
 
 use crate::error::{Error, ErrorCode};
-use crate::{Result, ExtResult};
+use crate::{ExtResult, Result};
 
-use std::ptr::{NonNull, drop_in_place};
+use libc::{calloc, free, malloc};
 use std::cmp::Ordering;
-use std::ops::{Deref, DerefMut};
-use std::hash::{Hasher, Hash};
+use std::hash::{Hash, Hasher};
 use std::mem::MaybeUninit;
-use std::{mem, slice, cmp, borrow};
-use libc::{malloc, calloc, free};
+use std::ops::{Deref, DerefMut};
+use std::ptr::{drop_in_place, NonNull};
+use std::{borrow, cmp, mem, slice};
 
 /// A pointer type for C-compatible heap allocation.
 ///
 /// Designed with a [`Box`]-like interface.
 #[derive(Debug)]
 #[repr(transparent)]
-pub struct CBox<T: ?Sized> (NonNull<T>);
+pub struct CBox<T: ?Sized>(NonNull<T>);
 
 impl<T> CBox<T> {
 	/// Allocates memory on the heap and then places `value` into it.
@@ -42,14 +42,12 @@ impl<T> CBox<T> {
 	pub fn try_new(value: T) -> ExtResult<Self, T> {
 		let size = cmp::max(mem::size_of::<T>(), 1);
 		// No size check neccessary, as `value` could be constructed.
-		let ptr = unsafe {
-			malloc(size)
-		} as *mut T;
+		let ptr = unsafe { malloc(size) } as *mut T;
 		match NonNull::new(ptr) {
 			None => Err(Self::buf_err().into_with_payload(value)),
 			Some(result) => {
 				unsafe { *ptr = value };
-				Ok(Self (result))
+				Ok(Self(result))
 			}
 		}
 	}
@@ -69,12 +67,10 @@ impl<T> CBox<T> {
 	pub fn try_new_zeroed() -> Result<CBox<MaybeUninit<T>>> {
 		let size = cmp::max(mem::size_of::<T>(), 1);
 		// No size check neccessary, as `T` wasn't rejected by the compiler.
-		let ptr = unsafe {
-			calloc(1, size)
-		} as *mut MaybeUninit<T>;
+		let ptr = unsafe { calloc(1, size) } as *mut MaybeUninit<T>;
 		match CBox::wrap(ptr) {
 			None => Err(Self::buf_err()),
-			Some(result) => Ok(result)
+			Some(result) => Ok(result),
 		}
 	}
 
@@ -104,13 +100,11 @@ impl<T> CBox<T> {
 		if size > isize::MAX as usize || len > maxlen {
 			return Err(Self::buf_err());
 		}
-		let ptr = unsafe {
-			calloc(len, size)
-		} as *mut MaybeUninit<T>;
+		let ptr = unsafe { calloc(len, size) } as *mut MaybeUninit<T>;
 
 		match CBox::wrap_slice(ptr, len) {
 			None => Err(Self::buf_err()),
-			Some(result) => Ok(result)
+			Some(result) => Ok(result),
 		}
 	}
 
@@ -133,13 +127,16 @@ impl<T> CBox<T> {
 	}
 }
 
-impl<T> CBox<T> where T: ?Sized {
+impl<T> CBox<T>
+where
+	T: ?Sized,
+{
 	/// Internal: Wraps a pointer to a `T`
 	#[inline]
 	fn wrap(raw: *mut T) -> Option<Self> {
 		match NonNull::new(raw) {
 			None => None,
-			Some(result) => Some(Self (result))
+			Some(result) => Some(Self(result)),
 		}
 	}
 
@@ -214,9 +211,7 @@ impl<T> CBox<MaybeUninit<T>> {
 	/// really are in an initialized state. Calling this when the content is
 	/// not yet fully initialized causes undefined behavior.
 	pub unsafe fn assume_init(self) -> CBox<T> {
-		CBox::<T> (
-			NonNull::new_unchecked(CBox::into_raw(self) as *mut _)
-		)
+		CBox::<T>(NonNull::new_unchecked(CBox::into_raw(self) as *mut _))
 	}
 }
 
@@ -229,9 +224,7 @@ impl<T> CBox<[MaybeUninit<T>]> {
 	/// really are in an initialized state. Calling this when the content is
 	/// not yet fully initialized causes undefined behavior.
 	pub unsafe fn assume_all_init(self) -> CBox<[T]> {
-		CBox::<[T]> (
-			NonNull::new_unchecked(CBox::into_raw(self) as *mut _)
-		)
+		CBox::<[T]>(NonNull::new_unchecked(CBox::into_raw(self) as *mut _))
 	}
 }
 
@@ -330,10 +323,10 @@ unsafe impl<T: ?Sized + Sync> Sync for CBox<T> {}
 
 #[cfg(test)]
 mod tests {
+	use super::*;
+	use libc::c_void;
 	use std::mem::size_of;
 	use std::ptr::null_mut;
-	use libc::c_void;
-	use super::*;
 
 	/// Check if object and pointer sizes match
 	#[test]
@@ -344,7 +337,7 @@ mod tests {
 		assert_eq!(size_of::<CBox<[i32]>>(), size_of::<*mut [i32]>());
 		assert_eq!(size_of::<CBox<[i32; 3]>>(), size_of::<*mut [i32; 3]>());
 	}
-	
+
 	/// Check if a simple object can be allocated, unwrapped, rewrapped and dropped
 	#[test]
 	fn test_allocation() {

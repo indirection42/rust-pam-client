@@ -11,11 +11,11 @@
 use crate::error::ErrorCode;
 use crate::Result;
 
-use std::ffi::CString;
-use std::{mem, slice, ptr};
-use libc::{strdup, free, c_void};
-use pam_sys::pam_response as PamResponse;
 use crate::c_box::CBox;
+use libc::{c_void, free, strdup};
+use pam_sys::pam_response as PamResponse;
+use std::ffi::CString;
+use std::{mem, ptr, slice};
 
 /// Reasonably safe fixed-length buffer for PAM conversation responses.
 ///
@@ -40,16 +40,22 @@ impl ResponseBuffer {
 		}
 		#[allow(clippy::cast_sign_loss)]
 		let buffer = CBox::<PamResponse>::try_new_zeroed_slice(len as usize)?;
-		Ok(Self { items: unsafe { buffer.assume_all_init() } })
+		Ok(Self {
+			items: unsafe { buffer.assume_all_init() },
+		})
 	}
 
 	/// Returns the number of elements in the buffer.
 	#[allow(unused)]
-	pub fn len(&self) -> usize { self.items.len() }
+	pub fn len(&self) -> usize {
+		self.items.len()
+	}
 
 	/// Returns `false` if the buffer was constructed with a `len` > 0.
 	#[allow(unused)]
-	pub fn is_empty(&self) -> bool { self.items.len() == 0 }
+	pub fn is_empty(&self) -> bool {
+		self.items.len() == 0
+	}
 
 	/// Iterates over all contained `PamResponse` items.
 	#[inline]
@@ -81,8 +87,14 @@ impl ResponseBuffer {
 		// here, because `CString::as_ptr()` guarantees to point to a valid
 		// NULL-terminated string.
 		*dest = match response {
-			Some(text) => PamResponse { resp: unsafe { strdup(text.as_ptr()) }, resp_retcode: 0 },
-			None => PamResponse { resp: ptr::null_mut(), resp_retcode: 0 },
+			Some(text) => PamResponse {
+				resp: unsafe { strdup(text.as_ptr()) },
+				resp_retcode: 0,
+			},
+			None => PamResponse {
+				resp: ptr::null_mut(),
+				resp_retcode: 0,
+			},
 		}
 	}
 
@@ -100,7 +112,7 @@ impl ResponseBuffer {
 	#[allow(clippy::cast_possible_truncation)]
 	pub fn put_binary(&mut self, index: usize, response_type: u8, response: &[u8]) {
 		assert!(index < self.items.len());
-		assert!(response.len()+5 <= u32::MAX as usize);
+		assert!(response.len() + 5 <= u32::MAX as usize);
 		// Sound because of the bounds check above and because zeroed memory
 		// is a valid representation for the contained structs.
 		let dest = &mut self.items[index];
@@ -112,7 +124,8 @@ impl ResponseBuffer {
 
 		// Copy the data into a buffer that can be deallocated with `free()`.
 		// Sound because zeroed memory is a valid representation for `u8`.
-		let mut buffer = unsafe { CBox::<u8>::new_zeroed_slice(5+response.len()).assume_all_init() };
+		let mut buffer =
+			unsafe { CBox::<u8>::new_zeroed_slice(5 + response.len()).assume_all_init() };
 		buffer[0..4].copy_from_slice(&[
 			(response.len() >> 24) as u8,
 			(response.len() >> 16) as u8,
@@ -121,7 +134,10 @@ impl ResponseBuffer {
 		]);
 		buffer[4] = response_type;
 		buffer[5..].copy_from_slice(response);
-		*dest = PamResponse { resp: CBox::into_raw_unsized(buffer) as *mut _, resp_retcode: 0 };
+		*dest = PamResponse {
+			resp: CBox::into_raw_unsized(buffer) as *mut _,
+			resp_retcode: 0,
+		};
 	}
 }
 
@@ -150,9 +166,9 @@ impl std::ops::Index<std::ops::RangeFull> for ResponseBuffer {
 impl<'a> IntoIterator for &'a ResponseBuffer {
 	type Item = &'a PamResponse;
 	type IntoIter = std::slice::Iter<'a, PamResponse>;
-    fn into_iter(self) -> Self::IntoIter {
+	fn into_iter(self) -> Self::IntoIter {
 		self[..].iter()
-    }
+	}
 }
 
 /// Convert a `ResponseBuffer` into a mutable `PamResponse` array pointer.
@@ -194,7 +210,7 @@ mod tests {
 		buffer.put(2, Some(CString::new("some response").unwrap()));
 		buffer.put(2, Some(CString::new("another response").unwrap()));
 		buffer.put_binary(3, 1, &[]);
-		buffer.put_binary(3, 1, &[0,1,2]);
+		buffer.put_binary(3, 1, &[0, 1, 2]);
 		return buffer;
 	}
 

@@ -8,17 +8,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.            *
  ***********************************************************************/
 
-use crate::ConversationHandler;
-use crate::resp_buf::{ResponseBuffer};
 use crate::error::ErrorCode;
+use crate::resp_buf::ResponseBuffer;
+use crate::ConversationHandler;
 use crate::PAM_SUCCESS;
 
+use libc::{c_char, c_int, c_uint, c_void};
+use pam_sys::PAM_BUF_ERR;
+use pam_sys::{
+	pam_conv as PamConversation, pam_message as PamMessage, pam_response as PamResponse,
+};
+use std::ffi::{CStr, CString};
 use std::mem::size_of;
 use std::slice;
-use std::ffi::{CStr, CString};
-use libc::{c_char, c_int, c_uint, c_void};
-use pam_sys::{pam_response as PamResponse, pam_conv as PamConversation, pam_message as PamMessage};
-use pam_sys::PAM_BUF_ERR;
 
 /// Wraps `callback` along with [`pam_converse<T>`] for handing to libpam.
 #[allow(clippy::borrowed_box)]
@@ -45,7 +47,7 @@ const fn map_conv_string(input: CString) -> Option<CString> {
 ///
 /// # Panics
 /// Panics if `num_msg` is negative or `msg` is null
-#[cfg(not(target_os="solaris"))]
+#[cfg(not(target_os = "solaris"))]
 #[inline]
 #[allow(clippy::cast_sign_loss)]
 fn msg_to_slice(msg: &*mut *const PamMessage, num_msg: c_int) -> &[&PamMessage] {
@@ -62,7 +64,7 @@ fn msg_to_slice(msg: &*mut *const PamMessage, num_msg: c_int) -> &[&PamMessage] 
 ///
 /// # Panics
 /// Panics if `num_msg` is negative or `msg` is null
-#[cfg(target_os="solaris")]
+#[cfg(target_os = "solaris")]
 #[inline]
 #[allow(clippy::cast_sign_loss)]
 fn msg_to_slice(msg: &*mut *const PamMessage, num_msg: c_int) -> &'static [PamMessage] {
@@ -73,14 +75,14 @@ fn msg_to_slice(msg: &*mut *const PamMessage, num_msg: c_int) -> &'static [PamMe
 }
 
 /// Maximum supported message number (for Linux and similar)
-#[cfg(not(target_os="solaris"))]
+#[cfg(not(target_os = "solaris"))]
 #[allow(clippy::cast_possible_wrap)]
 const fn max_msg_num() -> isize {
-	isize::MAX / size_of::<* const PamMessage>() as isize
+	isize::MAX / size_of::<*const PamMessage>() as isize
 }
 
 /// Maximum supported message number (for Solaris)
-#[cfg(target_os="solaris")]
+#[cfg(target_os = "solaris")]
 #[allow(clippy::cast_possible_wrap)]
 const fn max_msg_num() -> isize {
 	isize::MAX / size_of::<PamMessage>() as isize
@@ -148,7 +150,7 @@ pub(crate) unsafe extern "C" fn pam_converse<T: ConversationHandler>(
 	num_msg: c_int,
 	msg: *mut *const PamMessage,
 	out_resp: *mut *mut PamResponse,
-	appdata_ptr: *mut c_void
+	appdata_ptr: *mut c_void,
 ) -> c_int {
 	const MAX_MSG_NUM: isize = max_msg_num();
 
@@ -164,7 +166,7 @@ pub(crate) unsafe extern "C" fn pam_converse<T: ConversationHandler>(
 	// Prepare response buffer
 	let mut responses = match ResponseBuffer::new(num_msg as isize) {
 		Ok(buf) => buf,
-		Err(e) => return e.code().repr()
+		Err(e) => return e.code().repr(),
 	};
 
 	// Check preconditions for slice::from_raw_parts.
@@ -181,13 +183,13 @@ pub(crate) unsafe extern "C" fn pam_converse<T: ConversationHandler>(
 	for (i, message) in messages.iter().enumerate() {
 		match message.msg_style as c_uint {
 			// Special case: experimental binary messages (Linux)
-			#[cfg(target_os="linux")]
+			#[cfg(target_os = "linux")]
 			pam_sys::PAM_BINARY_PROMPT => {
 				let (type_, data) = msg_content_to_bin(&message.msg);
 				let result = handler.binary_prompt(type_, data);
 				match result {
 					Ok(response) => responses.put_binary(i, response.0, &response.1),
-					Err(code) => return code.repr()
+					Err(code) => return code.repr(),
 				}
 			}
 			// All other cases
@@ -197,34 +199,39 @@ pub(crate) unsafe extern "C" fn pam_converse<T: ConversationHandler>(
 					pam_sys::PAM_PROMPT_ECHO_ON => {
 						let text = msg_content_as_cstr(&message.msg);
 						handler.prompt_echo_on(text).map(map_conv_string)
-					},
+					}
 					pam_sys::PAM_PROMPT_ECHO_OFF => {
 						let text = msg_content_as_cstr(&message.msg);
 						handler.prompt_echo_off(text).map(map_conv_string)
-					},
+					}
 					pam_sys::PAM_TEXT_INFO => {
 						let text = msg_content_as_cstr(&message.msg);
 						handler.text_info(text);
 						Ok(None)
-					},
+					}
 					pam_sys::PAM_ERROR_MSG => {
 						let text = msg_content_as_cstr(&message.msg);
 						handler.error_msg(text);
 						Ok(None)
-					},
-					#[cfg(target_os="linux")]
+					}
+					#[cfg(target_os = "linux")]
 					pam_sys::PAM_RADIO_TYPE => {
 						let text = msg_content_to_cstr(&message.msg);
-						handler.radio_prompt(text)
-							.map(|b| if b { CString::new("yes").ok() } else { CString::new("no").ok() })
-					},
+						handler.radio_prompt(text).map(|b| {
+							if b {
+								CString::new("yes").ok()
+							} else {
+								CString::new("no").ok()
+							}
+						})
+					}
 					_ => Err(ErrorCode::CONV_ERR),
 				};
 
 				// Process response and bail out on errors
 				match result {
 					Ok(response) => responses.put(i, response),
-					Err(code) => return code.repr()
+					Err(code) => return code.repr(),
 				}
 			}
 		}
@@ -238,11 +245,11 @@ pub(crate) unsafe extern "C" fn pam_converse<T: ConversationHandler>(
 
 #[cfg(test)]
 mod tests {
-	use std::ptr;
-	use libc::free;
 	use super::*;
 	use crate::conv_mock::{Conversation, LogEntry};
 	use crate::conv_null::Conversation as NullConversation;
+	use libc::free;
+	use std::ptr;
 
 	fn make_handler() -> (Box<Conversation>, PamConversation) {
 		let mut handler = Box::new(Conversation::with_credentials("test usër", "paßword"));
@@ -260,58 +267,63 @@ mod tests {
 		let text = CString::new("").unwrap();
 		let mut msg = PamMessage {
 			msg_style: pam_sys::PAM_PROMPT_ECHO_ON as c_int,
-			msg: text.as_ptr()
+			msg: text.as_ptr(),
 		};
 		let mut msg_ptr = &mut msg as *const _;
 
 		let mut responses: *mut PamResponse = ptr::null_mut();
 
 		assert_eq!(
-			unsafe { c_callback(
-				1,
-				ptr::null_mut(),
-				&mut responses as *mut *mut _,
-				appdata,
-			) },
+			unsafe { c_callback(1, ptr::null_mut(), &mut responses as *mut *mut _, appdata,) },
 			ErrorCode::BUF_ERR.repr(),
 			"pam_conv with null `msg` arg returned `left` instead of BUF_ERR"
 		);
 
 		assert_eq!(
-			unsafe { c_callback(
-				1,
-				&mut msg_ptr as *mut *const PamMessage,
-				ptr::null_mut(),
-				appdata,
-			) },
+			unsafe {
+				c_callback(
+					1,
+					&mut msg_ptr as *mut *const PamMessage,
+					ptr::null_mut(),
+					appdata,
+				)
+			},
 			ErrorCode::BUF_ERR.repr(),
 			"pam_conv with null `out_resp` arg returned `left` instead of BUF_ERR"
 		);
 
 		assert_eq!(
-			unsafe { c_callback(
-				1,
-				&mut msg_ptr as *mut *const _,
-				&mut responses as *mut *mut _,
-				ptr::null_mut(),
-			) },
+			unsafe {
+				c_callback(
+					1,
+					&mut msg_ptr as *mut *const _,
+					&mut responses as *mut *mut _,
+					ptr::null_mut(),
+				)
+			},
 			ErrorCode::BUF_ERR.repr(),
 			"pam_conv with null `appdata_ptr` arg returned `left` instead of BUF_ERR"
 		);
 
 		assert_eq!(
-			unsafe { c_callback(
-				-1,
-				&mut msg_ptr as *mut *const _,
-				&mut responses as *mut *mut _,
-				appdata,
-			) },
+			unsafe {
+				c_callback(
+					-1,
+					&mut msg_ptr as *mut *const _,
+					&mut responses as *mut *mut _,
+					appdata,
+				)
+			},
 			ErrorCode::BUF_ERR.repr(),
 			"pam_conv with negative `msg_num` arg returned `left` instead of BUF_ERR"
 		);
 
 		// There should be exactly zero message in the log
-		assert_eq!(handler.log.len(), 0, "log contained `left` messages instead of `right`");
+		assert_eq!(
+			handler.log.len(),
+			0,
+			"log contained `left` messages instead of `right`"
+		);
 	}
 
 	/// Check if `pam_conv` rejects `0` as `num_msg` argument
@@ -326,7 +338,7 @@ mod tests {
 
 		let mut msg = PamMessage {
 			msg_style: pam_sys::PAM_PROMPT_ECHO_ON as c_int,
-			msg: ptr::null_mut()
+			msg: ptr::null_mut(),
 		};
 		let mut msg_ptr = &mut msg as *const _;
 
@@ -334,18 +346,24 @@ mod tests {
 
 		// zero `msg_num` should fail
 		assert_eq!(
-			unsafe { c_callback(
-				0,
-				&mut msg_ptr as *mut *const _,
-				&mut responses as *mut *mut _,
-				appdata,
-			) },
+			unsafe {
+				c_callback(
+					0,
+					&mut msg_ptr as *mut *const _,
+					&mut responses as *mut *mut _,
+					appdata,
+				)
+			},
 			ErrorCode::BUF_ERR.repr(),
 			"pam_conv with zero `msg_num` arg returned `left` instead of BUF_ERR"
 		);
 
 		// There should be exactly zero message in the log
-		assert_eq!(handler.log.len(), 0, "log contained `left` messages instead of `right`");
+		assert_eq!(
+			handler.log.len(),
+			0,
+			"log contained `left` messages instead of `right`"
+		);
 	}
 
 	/// Check if `pam_conv` correctly answers a prompt
@@ -357,18 +375,20 @@ mod tests {
 		let text = CString::new(prompt).unwrap();
 		let mut msg = PamMessage {
 			msg_style: style as c_int,
-			msg: text.as_ptr()
+			msg: text.as_ptr(),
 		};
 		let mut msg_ptr = &mut msg as *const _;
 
 		let mut responses: *mut PamResponse = ptr::null_mut();
 
-		let code = unsafe { c_callback(
-			1,
-			&mut msg_ptr as *mut *const _,
-			&mut responses as *mut *mut _,
-			appdata,
-		) };
+		let code = unsafe {
+			c_callback(
+				1,
+				&mut msg_ptr as *mut *const _,
+				&mut responses as *mut *mut _,
+				appdata,
+			)
+		};
 		assert_eq!(
 			code,
 			pam_sys::PAM_SUCCESS as c_int,
@@ -400,7 +420,11 @@ mod tests {
 		}
 
 		// There should be exactly zero message in the log
-		assert_eq!(handler.log.len(), 0, "log contained `left` messages instead of `right`");
+		assert_eq!(
+			handler.log.len(),
+			0,
+			"log contained `left` messages instead of `right`"
+		);
 	}
 
 	/// Check if `pam_conv` correctly handles an error from the conversation handler
@@ -414,18 +438,20 @@ mod tests {
 		let text = CString::new("").unwrap();
 		let mut msg = PamMessage {
 			msg_style: pam_sys::PAM_PROMPT_ECHO_OFF as c_int,
-			msg: text.as_ptr()
+			msg: text.as_ptr(),
 		};
 		let mut msg_ptr = &mut msg as *const _;
 
 		let mut responses: *mut PamResponse = ptr::null_mut();
 
-		let code = unsafe { c_callback(
-			1,
-			&mut msg_ptr as *mut *const _,
-			&mut responses as *mut *mut _,
-			appdata,
-		) };
+		let code = unsafe {
+			c_callback(
+				1,
+				&mut msg_ptr as *mut *const _,
+				&mut responses as *mut *mut _,
+				appdata,
+			)
+		};
 		assert_eq!(
 			code,
 			ErrorCode::CONV_ERR.repr(),
@@ -437,7 +463,7 @@ mod tests {
 			"response is not null after conversation with error"
 		);
 	}
-	
+
 	/// Check if `pam_conv` correctly answers an echoing prompt
 	#[test]
 	fn test_prompt_echo_on() {
@@ -452,7 +478,7 @@ mod tests {
 
 	/// Check if `pam_conv` correctly answers a radio prompt (Linxu specific)
 	#[test]
-	#[cfg(target_os="linux")]
+	#[cfg(target_os = "linux")]
 	fn test_prompt_radio() {
 		test_prompt(pam_sys::PAM_RADIO_TYPE, "no? ", "no")
 	}
@@ -469,18 +495,20 @@ mod tests {
 			msg: match text {
 				Some(_) => c_text.as_ptr(),
 				None => ptr::null(),
-			}
+			},
 		};
 		let mut msg_ptr = &mut msg as *const _;
 
 		let mut responses: *mut PamResponse = ptr::null_mut();
 
-		let code = unsafe { c_callback(
-			1,
-			&mut msg_ptr as *mut *const _,
-			&mut responses as *mut *mut _,
-			appdata,
-		) };
+		let code = unsafe {
+			c_callback(
+				1,
+				&mut msg_ptr as *mut *const _,
+				&mut responses as *mut *mut _,
+				appdata,
+			)
+		};
 		assert_eq!(
 			code,
 			pam_sys::PAM_SUCCESS as c_int,
@@ -509,7 +537,11 @@ mod tests {
 		}
 
 		// There should be exactly one message in the log
-		assert_eq!(handler.log.len(), 1, "log contained `left` messages instead of `right`");
+		assert_eq!(
+			handler.log.len(),
+			1,
+			"log contained `left` messages instead of `right`"
+		);
 
 		let result = handler.log[0].clone();
 		// Check if clearing works
@@ -524,7 +556,11 @@ mod tests {
 		const MSG: &str = "test error öäüß";
 		let logentry = test_output_msg(pam_sys::PAM_ERROR_MSG, Some(MSG));
 		if let LogEntry::Error(msg) = logentry {
-			assert_eq!(msg.to_string_lossy(), MSG, "log contained unexpected message `left`");
+			assert_eq!(
+				msg.to_string_lossy(),
+				MSG,
+				"log contained unexpected message `left`"
+			);
 		} else {
 			assert!(false, "log contained unexpected message type");
 		}
@@ -536,7 +572,11 @@ mod tests {
 		const MSG: &str = "test info äöüß";
 		let logentry = test_output_msg(pam_sys::PAM_TEXT_INFO, Some(MSG));
 		if let LogEntry::Info(msg) = logentry {
-			assert_eq!(msg.to_string_lossy(), MSG, "log contained unexpected message `left`");
+			assert_eq!(
+				msg.to_string_lossy(),
+				MSG,
+				"log contained unexpected message `left`"
+			);
 		} else {
 			assert!(false, "log contained unexpected message type");
 		}
@@ -547,7 +587,11 @@ mod tests {
 	fn test_null_msg() {
 		let logentry = test_output_msg(pam_sys::PAM_TEXT_INFO, None);
 		if let LogEntry::Info(msg) = logentry {
-			assert_eq!(msg.to_string_lossy(), "", "log contained unexpected message `left`");
+			assert_eq!(
+				msg.to_string_lossy(),
+				"",
+				"log contained unexpected message `left`"
+			);
 		} else {
 			assert!(false, "log contained unexpected message type");
 		}
@@ -555,42 +599,37 @@ mod tests {
 
 	/// Check if a unknown message type produces a conversation error
 	#[test]
-	#[should_panic="assertion failed"]
+	#[should_panic = "assertion failed"]
 	fn test_inval_msg() {
 		test_output_msg(65535, None);
 	}
 
 	/// Check if `pam_conv` correctly handles a binary message
 	#[test]
-	#[cfg(target_os="linux")]
+	#[cfg(target_os = "linux")]
 	fn test_binary() {
 		let (_handler, pam_conv) = make_handler();
 		let c_callback = pam_conv.conv.unwrap();
 		let appdata = pam_conv.appdata_ptr;
 
-		let buffer: Vec<u8> = vec![
-			0,
-			0,
-			0,
-			1,
-			0xFF,
-			0x42,
-		];
+		let buffer: Vec<u8> = vec![0, 0, 0, 1, 0xFF, 0x42];
 
 		let msg = PamMessage {
 			msg_style: pam_sys::PAM_BINARY_PROMPT as c_int,
-			msg: buffer.as_ptr() as *const _
+			msg: buffer.as_ptr() as *const _,
 		};
 		let mut msg_ptr = &msg as *const _;
 
 		let mut responses: *mut PamResponse = ptr::null_mut();
 
-		let code = unsafe { c_callback(
-			1,
-			&mut msg_ptr as *mut *const _,
-			&mut responses as *mut *mut _,
-			appdata,
-		) };
+		let code = unsafe {
+			c_callback(
+				1,
+				&mut msg_ptr as *mut *const _,
+				&mut responses as *mut *mut _,
+				appdata,
+			)
+		};
 
 		assert_eq!(
 			code,

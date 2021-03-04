@@ -8,15 +8,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.            *
  ***********************************************************************/
 
-use libc::{c_char};
-use std::{slice, fmt};
+use crate::c_box::CBox;
+use libc::c_char;
 use std::cmp::Ordering;
-use std::iter::{FusedIterator};
+use std::collections::HashMap;
 use std::ffi::{CStr, CString, OsStr, OsString};
+use std::iter::FusedIterator;
 use std::ops::Index;
 use std::os::unix::ffi::OsStrExt;
-use std::collections::HashMap;
-use crate::c_box::CBox;
+use std::{fmt, slice};
 
 /// Item in a PAM environment list.
 ///
@@ -27,7 +27,7 @@ use crate::c_box::CBox;
 /// no constructor for custom instances is provided.
 #[repr(transparent)]
 #[derive(Debug)]
-pub struct EnvItem (CBox<c_char>);
+pub struct EnvItem(CBox<c_char>);
 
 impl EnvItem {
 	/// Returns a [`CStr`] reference to the `"key=value"` representation.
@@ -40,10 +40,13 @@ impl EnvItem {
 	#[must_use]
 	pub fn key_value(&self) -> (&OsStr, &OsStr) {
 		let element = <&CStr>::from(self).to_bytes();
-		let sep = element.iter().position(|b| *b == b'=').unwrap_or_else(|| element.len());
+		let sep = element
+			.iter()
+			.position(|b| *b == b'=')
+			.unwrap_or_else(|| element.len());
 		(
 			OsStr::from_bytes(&element[..sep]),
-			OsStr::from_bytes(&element[sep+1..]),
+			OsStr::from_bytes(&element[sep + 1..]),
 		)
 	}
 }
@@ -111,7 +114,7 @@ impl serde::Serialize for EnvItem {
 /// Helper function: determine the length of the array
 unsafe fn count_items<T: ?Sized>(mut ptr: *const *const T) -> usize {
 	let mut result: usize = 0;
-	while ! (*ptr).is_null() {
+	while !(*ptr).is_null() {
 		ptr = ptr.add(1);
 		result += 1;
 	}
@@ -173,7 +176,7 @@ unsafe fn count_items<T: ?Sized>(mut ptr: *const *const T) -> usize {
 /// ).expect("replacing the current process failed");
 /// ```
 #[derive(Debug)]
-pub struct EnvList (CBox<[EnvItem]>);
+pub struct EnvList(CBox<[EnvItem]>);
 
 impl EnvList {
 	/// Creates an `EnvList` from a pointer as returned by
@@ -185,17 +188,16 @@ impl EnvList {
 	pub(crate) unsafe fn new(data: *mut *mut c_char) -> Self {
 		assert!(!data.is_null());
 		let len = count_items(data as *const *const c_char);
-		Self (
-			CBox::from_raw_slice(data as *mut EnvItem, len)
-		)
+		Self(CBox::from_raw_slice(data as *mut EnvItem, len))
 	}
-	
+
 	/// Returns a reference to the value of the named environment variable.
 	///
 	/// Returns `None` if the variable doesn't exist in this list.
 	#[must_use]
 	pub fn get<'a>(&'a self, name: &'_ OsStr) -> Option<&'a OsStr> {
-		self.iter_tuples().find_map(|(k,v)| if k == name { Some(v) } else { None })
+		self.iter_tuples()
+			.find_map(|(k, v)| if k == name { Some(v) } else { None })
 	}
 
 	/// Returns an iterator over all contained variables as [`EnvItem`]s.
@@ -229,7 +231,7 @@ impl EnvList {
 	/// Provides compatibility with [`std::process::Command::envs()`].
 	#[inline]
 	pub fn iter_tuples(&self) -> TupleIter {
-		TupleIter (self.0.iter())
+		TupleIter(self.0.iter())
 	}
 }
 
@@ -307,7 +309,10 @@ impl<'a> From<&'a EnvList> for Vec<&'a CStr> {
 }
 
 /// Conversion to a hash map
-impl<S> From<EnvList> for HashMap<OsString, OsString, S> where S: ::std::hash::BuildHasher + Default {
+impl<S> From<EnvList> for HashMap<OsString, OsString, S>
+where
+	S: ::std::hash::BuildHasher + Default,
+{
 	fn from(list: EnvList) -> Self {
 		let mut map = HashMap::<_, _, S>::with_capacity_and_hasher(list.len(), S::default());
 		for (key, value) in list.iter_tuples() {
@@ -318,7 +323,10 @@ impl<S> From<EnvList> for HashMap<OsString, OsString, S> where S: ::std::hash::B
 }
 
 /// Reference conversion to a referencing hash map
-impl<'a, S> From<&'a EnvList> for HashMap<&'a OsStr, &'a OsStr, S> where S: ::std::hash::BuildHasher + Default {
+impl<'a, S> From<&'a EnvList> for HashMap<&'a OsStr, &'a OsStr, S>
+where
+	S: ::std::hash::BuildHasher + Default,
+{
 	fn from(list: &'a EnvList) -> Self {
 		list.iter_tuples().collect()
 	}
@@ -354,7 +362,7 @@ pub type Iter<'a> = slice::Iter<'a, EnvItem>;
 /// Returned by [`EnvList::iter_tuples()`].
 #[must_use]
 #[derive(Debug)]
-pub struct TupleIter<'a> (slice::Iter<'a, EnvItem>);
+pub struct TupleIter<'a>(slice::Iter<'a, EnvItem>);
 
 impl<'a> Iterator for TupleIter<'a> {
 	type Item = (&'a OsStr, &'a OsStr);
@@ -362,7 +370,7 @@ impl<'a> Iterator for TupleIter<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.0.next() {
 			Some(item) => Some(item.key_value()),
-			None => None
+			None => None,
 		}
 	}
 

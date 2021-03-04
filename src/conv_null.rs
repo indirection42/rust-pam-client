@@ -10,9 +10,9 @@
  * https://creativecommons.org/publicdomain/zero/1.0/legalcode         *
  ***********************************************************************/
 
-use std::ffi::{CStr, CString};
-use crate::error::ErrorCode;
 use super::ConversationHandler;
+use crate::error::ErrorCode;
+use std::ffi::{CStr, CString};
 
 /// Null implementation of `ConversationHandler`
 ///

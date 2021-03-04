@@ -8,19 +8,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.            *
  ***********************************************************************/
 
-#[doc(no_inline)]
-pub use crate::{ErrorCode};
 use crate::char_ptr_to_str;
+#[doc(no_inline)]
+pub use crate::ErrorCode;
 use pam_sys::pam_handle as PamHandle;
 use pam_sys::pam_strerror;
 
 use std::any::type_name;
 use std::cmp::{Eq, PartialEq};
 use std::error;
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::hash::{Hash, Hasher};
-use std::fmt::{Display, Formatter, Debug, Result as FmtResult};
-use std::marker::PhantomData;
 use std::io;
+use std::marker::PhantomData;
 
 /// The error payload type for errors that never have payloads.
 ///
@@ -33,28 +33,37 @@ use std::io;
 pub enum NoPayload {}
 
 impl Display for NoPayload {
-	fn fmt(&self, _: &mut Formatter<'_>) -> FmtResult { match *self {} }
+	fn fmt(&self, _: &mut Formatter<'_>) -> FmtResult {
+		match *self {}
+	}
 }
 
 impl PartialEq for NoPayload {
-	fn eq(&self, _: &NoPayload) -> bool { match *self {} }
+	fn eq(&self, _: &NoPayload) -> bool {
+		match *self {}
+	}
 }
 
 impl Eq for NoPayload {}
 
 impl Hash for NoPayload {
-	fn hash<H: Hasher>(&self, _: &mut H) { match *self {} }
+	fn hash<H: Hasher>(&self, _: &mut H) {
+		match *self {}
+	}
 }
 
 /// Helper to implement `Debug` on `ErrorWith` with `T` not implementing `Debug`
-enum DisplayHelper<T> { Some(PhantomData<T>), None }
+enum DisplayHelper<T> {
+	Some(PhantomData<T>),
+	None,
+}
 
 impl<T> DisplayHelper<T> {
 	#[inline]
 	fn new(option: &Option<T>) -> Self {
 		match option {
 			None => Self::None,
-			Some(_) => Self::Some(PhantomData)
+			Some(_) => Self::Some(PhantomData),
 		}
 	}
 }
@@ -63,7 +72,7 @@ impl<T> Debug for DisplayHelper<T> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
 		match *self {
 			Self::None => write!(f, "None"),
-			Self::Some(_) => write!(f, "<{}>", type_name::<T>())
+			Self::Some(_) => write!(f, "<{}>", type_name::<T>()),
 		}
 	}
 }
@@ -78,7 +87,7 @@ impl<T> Debug for DisplayHelper<T> {
 pub struct ErrorWith<T> {
 	code: ErrorCode,
 	msg: String,
-	payload: Option<T>
+	payload: Option<T>,
 }
 
 impl<T> ErrorWith<T> {
@@ -86,12 +95,17 @@ impl<T> ErrorWith<T> {
 	///
 	/// Functions that consume a struct can use the payload to transfer back
 	/// ownership in error cases.
-	pub fn with_payload(handle: &mut PamHandle, code: ErrorCode, payload: Option<T>) -> ErrorWith<T> {
+	pub fn with_payload(
+		handle: &mut PamHandle,
+		code: ErrorCode,
+		payload: Option<T>,
+	) -> ErrorWith<T> {
 		Self {
 			code,
 			msg: char_ptr_to_str(unsafe { pam_strerror(handle, code.repr()) })
-				.unwrap_or("").into(),
-			payload
+				.unwrap_or("")
+				.into(),
+			payload,
 		}
 	}
 
@@ -102,7 +116,11 @@ impl<T> ErrorWith<T> {
 
 	/// Text representation of the error code, if available.
 	pub fn message(&self) -> Option<&str> {
-		if self.msg.is_empty() { None } else { Some(&self.msg) }
+		if self.msg.is_empty() {
+			None
+		} else {
+			Some(&self.msg)
+		}
 	}
 
 	/// Returns a reference to an optional payload.
@@ -119,7 +137,7 @@ impl<T> ErrorWith<T> {
 	pub fn take_payload(&mut self) -> Option<T> {
 		match self.payload {
 			Some(_) => self.payload.take(),
-			None => None
+			None => None,
 		}
 	}
 
@@ -129,7 +147,7 @@ impl<T> ErrorWith<T> {
 		Error {
 			code: self.code,
 			msg: self.msg,
-			payload: None
+			payload: None,
 		}
 	}
 
@@ -140,8 +158,8 @@ impl<T> ErrorWith<T> {
 			msg: self.msg,
 			payload: match self.payload {
 				None => None,
-				Some(object) => Some(func(object))
-			}
+				Some(object) => Some(func(object)),
+			},
 		}
 	}
 
@@ -150,7 +168,7 @@ impl<T> ErrorWith<T> {
 		Error {
 			code: self.code,
 			msg: self.msg,
-			payload: None
+			payload: None,
 		}
 	}
 }
@@ -161,9 +179,9 @@ impl<T> Debug for ErrorWith<T> {
 		// without specialization
 		if type_name::<T>() == type_name::<NoPayload>() {
 			f.debug_struct("pam_client::Error")
-			.field("code", &self.code)
-			.field("msg", &self.msg)
-			.finish()
+				.field("code", &self.code)
+				.field("msg", &self.msg)
+				.finish()
 		} else {
 			f.debug_struct("pam_client::ErrorWith")
 				.field("code", &self.code)
@@ -191,7 +209,7 @@ impl Error {
 		ErrorWith::<T> {
 			code: self.code,
 			msg: self.msg,
-			payload: Some(payload)
+			payload: Some(payload),
 		}
 	}
 
@@ -201,7 +219,7 @@ impl Error {
 		ErrorWith::<T> {
 			code: self.code,
 			msg: self.msg,
-			payload: None
+			payload: None,
 		}
 	}
 }
@@ -218,15 +236,21 @@ impl<T> Display for ErrorWith<T> {
 
 impl<T> error::Error for ErrorWith<T> {}
 
-impl<T> PartialEq for ErrorWith<T> where T: PartialEq {
+impl<T> PartialEq for ErrorWith<T>
+where
+	T: PartialEq,
+{
 	fn eq(&self, other: &Self) -> bool {
 		self.code == other.code && self.payload == other.payload
 	}
 }
 
-impl<T> Eq for ErrorWith<T> where T:  Eq {}
+impl<T> Eq for ErrorWith<T> where T: Eq {}
 
-impl<T> Hash for ErrorWith<T> where T: Hash {
+impl<T> Hash for ErrorWith<T>
+where
+	T: Hash,
+{
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		(self.code as i32).hash(state);
 		self.payload.hash(state);
@@ -254,7 +278,11 @@ impl<T> Hash for ErrorWith<T> where T: Hash {
 /// ```
 impl From<ErrorCode> for Error {
 	fn from(code: ErrorCode) -> Self {
-		Error { code, msg: String::new(), payload: None }
+		Error {
+			code,
+			msg: String::new(),
+			payload: None,
+		}
 	}
 }
 
@@ -282,12 +310,17 @@ impl From<ErrorCode> for Error {
 /// ```
 impl<T: Send + Sync + Debug + 'static> From<ErrorWith<T>> for io::Error {
 	fn from(error: ErrorWith<T>) -> Self {
-		io::Error::new(match error.code {
-			ErrorCode::INCOMPLETE => io::ErrorKind::Interrupted,
-			ErrorCode::BAD_ITEM | ErrorCode::USER_UNKNOWN => io::ErrorKind::NotFound,
-			ErrorCode::CRED_INSUFFICIENT | ErrorCode::PERM_DENIED => io::ErrorKind::PermissionDenied,
-			_ => io::ErrorKind::Other
-		}, Box::new(error))
+		io::Error::new(
+			match error.code {
+				ErrorCode::INCOMPLETE => io::ErrorKind::Interrupted,
+				ErrorCode::BAD_ITEM | ErrorCode::USER_UNKNOWN => io::ErrorKind::NotFound,
+				ErrorCode::CRED_INSUFFICIENT | ErrorCode::PERM_DENIED => {
+					io::ErrorKind::PermissionDenied
+				}
+				_ => io::ErrorKind::Other,
+			},
+			Box::new(error),
+		)
 	}
 }
 
@@ -300,8 +333,7 @@ mod tests {
 	#[test]
 	fn test_basic() {
 		let context = Context::new("test", None, Conversation::default()).unwrap();
-		let error = Error::new(context.handle(), ErrorCode::CONV_ERR)
-			.into_with_payload("foo");
+		let error = Error::new(context.handle(), ErrorCode::CONV_ERR).into_with_payload("foo");
 		assert_eq!(error.payload(), Some(&"foo"));
 		assert!(format!("{:?}", error).len() > 1);
 		let mut error = error.map(|_| usize::MIN);
@@ -318,7 +350,10 @@ mod tests {
 	#[test]
 	fn test_no_msg() {
 		let error = Error::from(ErrorCode::BUF_ERR);
-		assert_eq!(format!("{}", error), format!("<{}>", (ErrorCode::BUF_ERR as i32)));
+		assert_eq!(
+			format!("{}", error),
+			format!("<{}>", (ErrorCode::BUF_ERR as i32))
+		);
 		let _error: ErrorWith<()> = error.into();
 	}
 }

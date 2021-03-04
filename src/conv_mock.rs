@@ -8,11 +8,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.            *
  ***********************************************************************/
 
-use std::iter::FusedIterator;
-use std::ffi::{CStr, CString};
-use std::vec;
-use crate::error::ErrorCode;
 use super::ConversationHandler;
+use crate::error::ErrorCode;
+use std::ffi::{CStr, CString};
+use std::iter::FusedIterator;
+use std::vec;
 
 /// Elements in [`Conversation::log`]
 #[derive(Debug, Clone)]
@@ -61,7 +61,7 @@ impl Conversation {
 		Self {
 			username: String::new(),
 			password: String::new(),
-			log: vec::Vec::new()
+			log: vec::Vec::new(),
 		}
 	}
 
@@ -71,7 +71,7 @@ impl Conversation {
 		Self {
 			username: username.into(),
 			password: password.into(),
-			log: vec::Vec::new()
+			log: vec::Vec::new(),
 		}
 	}
 
@@ -81,18 +81,18 @@ impl Conversation {
 	}
 
 	/// Lists only errors from the log
-	pub fn errors(&self) -> impl Iterator<Item=&CString> + FusedIterator {
+	pub fn errors(&self) -> impl Iterator<Item = &CString> + FusedIterator {
 		self.log.iter().filter_map(|x| match x {
 			LogEntry::Info(_) => None,
-			LogEntry::Error(msg) => Some(msg)
+			LogEntry::Error(msg) => Some(msg),
 		})
 	}
 
 	/// Lists only info messages from the log
-	pub fn infos(&self) -> impl Iterator<Item=&CString> + FusedIterator {
+	pub fn infos(&self) -> impl Iterator<Item = &CString> + FusedIterator {
 		self.log.iter().filter_map(|x| match x {
 			LogEntry::Info(msg) => Some(msg),
-			LogEntry::Error(_) => None
+			LogEntry::Error(_) => None,
 		})
 	}
 }

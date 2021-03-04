@@ -115,26 +115,26 @@
 
 mod c_box;
 mod context;
-mod conversation;
-mod error;
-mod ffi;
-mod session;
-mod resp_buf;
-#[cfg(feature="cli")]
+#[cfg(feature = "cli")]
 pub mod conv_cli;
 pub mod conv_mock;
 pub mod conv_null;
+mod conversation;
 pub mod env_list;
+mod error;
+mod ffi;
+mod resp_buf;
+mod session;
 
 #[macro_use]
 extern crate bitflags;
-use libc::{c_int, c_char};
+use libc::{c_char, c_int};
 use std::ffi::CStr;
 
 pub use context::Context;
 pub use conversation::ConversationHandler;
-pub use session::{Session, SessionToken};
 pub use error::{Error, ErrorWith};
+pub use session::{Session, SessionToken};
 
 use enum_repr::EnumRepr;
 use pam_sys::*;

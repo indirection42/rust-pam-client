@@ -9,7 +9,7 @@
  ***********************************************************************/
 
 use crate::error::ErrorCode;
-use std::ffi::{CString, CStr};
+use std::ffi::{CStr, CString};
 use std::result::Result;
 
 /// Trait for PAM conversation functions
@@ -71,7 +71,7 @@ pub trait ConversationHandler {
 	///   pass [`ErrorCode::INCOMPLETE`] to the application and let it
 	///   try again later.
 	fn radio_prompt(&mut self, prompt: &CStr) -> Result<bool, ErrorCode> {
-		let prompt = [ prompt.to_bytes(), b" [y/N]\0" ].concat();
+		let prompt = [prompt.to_bytes(), b" [y/N]\0"].concat();
 
 		self.prompt_echo_on(CStr::from_bytes_with_nul(&prompt).unwrap())
 			.map(|s| matches!(s.as_bytes_with_nul()[0], b'Y' | b'y' | b'j' | b'J'))
