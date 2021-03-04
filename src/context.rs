@@ -381,7 +381,7 @@ where
 	///
 	/// The returned [`EnvList`] type is designed to ease handing the
 	/// environment to [`std::process::Command::envs()`] and
-	/// `nix::unistd::execve`.
+	/// `nix::unistd::execve()`.
 	#[must_use]
 	#[rustversion::attr(since(1.48), doc(alias = "pam_getenvlist"))]
 	pub fn envlist(&self) -> EnvList {
@@ -391,7 +391,7 @@ where
 	/// Authenticates a user.
 	///
 	/// The conversation handler may be called to ask the user for their name
-	/// (especially if no default username was provided), their password and
+	/// (especially if no initial username was provided), their password and
 	/// possibly other tokens if e.g. two-factor authentication is required.
 	/// Conversely the conversation handler may not be called if authentication
 	/// is handled by other means, e.g. a fingerprint scanner.
