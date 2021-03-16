@@ -12,6 +12,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.            *
  ***********************************************************************/
 
+#![forbid(unsafe_code)]
+
 use super::ConversationHandler;
 use crate::error::ErrorCode;
 use std::ffi::{CStr, CString};

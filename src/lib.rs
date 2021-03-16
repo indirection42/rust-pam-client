@@ -151,6 +151,7 @@ fn char_ptr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
 	}
 }
 
+#[allow(clippy::upper_case_acronyms)]
 bitflags! {
 	/// Flags for most PAM functions
 	#[repr(transparent)]
@@ -177,12 +178,13 @@ bitflags! {
 	}
 }
 
+#[allow(clippy::upper_case_acronyms)]
 impl Flag {
 	/// No flags; use default behaviour.
 	pub const NONE: Flag = Flag { bits: 0 };
 }
 
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[EnumRepr(type = "c_int")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

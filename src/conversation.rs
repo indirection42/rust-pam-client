@@ -8,6 +8,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.            *
  ***********************************************************************/
 
+#![forbid(unsafe_code)]
+
 use crate::error::ErrorCode;
 use std::ffi::{CStr, CString};
 use std::result::Result;
