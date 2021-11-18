@@ -40,7 +40,7 @@ test:stable:
   before_script:
     - apt-get update -qy
     - apt-get -qy install libpam0g-dev llvm clang libclang-dev
-    - 'echo "deb http://deb.debian.org/debian/ buster main contrib" >> /etc/apt/sources.list'
+    - 'echo "deb http://deb.debian.org/debian/ sid main contrib" >> /etc/apt/sources.list'
     - apt-get update -qy
     - apt-get -qy install kcov
     - cargo install cargo-hack
