@@ -160,7 +160,7 @@ pub(crate) unsafe extern "C" fn pam_converse<T: ConversationHandler>(
 	}
 
 	// Extract conversation handler from `appdata_ptr`.
-	// This is sound, as we did the reverse in `Context::new()`.
+	// This is sound, as we did the reverse in `to_pam_conv`.
 	let handler = &mut *(appdata_ptr as *mut T);
 
 	// Prepare response buffer

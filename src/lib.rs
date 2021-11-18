@@ -151,9 +151,9 @@ fn char_ptr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
 	}
 }
 
-#[allow(clippy::upper_case_acronyms)]
 bitflags! {
 	/// Flags for most PAM functions
+	#[allow(clippy::upper_case_acronyms)]
 	#[repr(transparent)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct Flag: c_int {

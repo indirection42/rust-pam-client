@@ -390,6 +390,7 @@ mod tests {
 
 	/// Check if slice conversion from a null pointer panics.
 	#[test]
+	#[cfg_attr(miri, ignore)]
 	#[should_panic = "from null pointer"]
 	fn test_null_slice() {
 		let _: CBox<[()]> = unsafe { CBox::from_raw_slice(null_mut(), 1) };
