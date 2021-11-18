@@ -13,7 +13,7 @@ use crate::resp_buf::ResponseBuffer;
 use crate::ConversationHandler;
 use crate::PAM_SUCCESS;
 
-use libc::{c_char, c_int, c_uint, c_void};
+use libc::{c_char, c_int, c_void};
 use pam_sys::PAM_BUF_ERR;
 use pam_sys::{
 	pam_conv as PamConversation, pam_message as PamMessage, pam_response as PamResponse,
@@ -181,7 +181,7 @@ pub(crate) unsafe extern "C" fn pam_converse<T: ConversationHandler>(
 
 	// Call conversation handler for each message
 	for (i, message) in messages.iter().enumerate() {
-		match message.msg_style as c_uint {
+		match message.msg_style as c_int {
 			// Special case: experimental binary messages (Linux)
 			#[cfg(target_os = "linux")]
 			pam_sys::PAM_BINARY_PROMPT => {
@@ -195,7 +195,7 @@ pub(crate) unsafe extern "C" fn pam_converse<T: ConversationHandler>(
 			// All other cases
 			_ => {
 				// Delegate to the correct handler method based on `msg_style`
-				let result = match message.msg_style as c_uint {
+				let result = match message.msg_style as c_int {
 					pam_sys::PAM_PROMPT_ECHO_ON => {
 						let text = msg_content_as_cstr(&message.msg);
 						handler.prompt_echo_on(text).map(map_conv_string)
@@ -367,7 +367,7 @@ mod tests {
 	}
 
 	/// Check if `pam_conv` correctly answers a prompt
-	fn test_prompt(style: c_uint, prompt: &str, expected: &str) {
+	fn test_prompt(style: c_int, prompt: &str, expected: &str) {
 		let (handler, pam_conv) = make_handler();
 		let c_callback = pam_conv.conv.unwrap();
 		let appdata = pam_conv.appdata_ptr;
@@ -484,7 +484,7 @@ mod tests {
 	}
 
 	/// Check if `pam_conv` correctly handles a info/error message
-	fn test_output_msg(style: c_uint, text: Option<&str>) -> LogEntry {
+	fn test_output_msg(style: c_int, text: Option<&str>) -> LogEntry {
 		let (mut handler, pam_conv) = make_handler();
 		let c_callback = pam_conv.conv.unwrap();
 		let appdata = pam_conv.appdata_ptr;
