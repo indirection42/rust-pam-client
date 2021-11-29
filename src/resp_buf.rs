@@ -112,7 +112,8 @@ impl ResponseBuffer {
 	#[allow(clippy::cast_possible_truncation)]
 	pub fn put_binary(&mut self, index: usize, response_type: u8, response: &[u8]) {
 		assert!(index < self.items.len());
-		assert!(response.len() + 5 <= u32::MAX as usize);
+		let len = response.len() + 5;
+		assert!(len <= u32::MAX as usize);
 		// Sound because of the bounds check above and because zeroed memory
 		// is a valid representation for the contained structs.
 		let dest = &mut self.items[index];
@@ -124,14 +125,8 @@ impl ResponseBuffer {
 
 		// Copy the data into a buffer that can be deallocated with `free()`.
 		// Sound because zeroed memory is a valid representation for `u8`.
-		let mut buffer =
-			unsafe { CBox::<u8>::new_zeroed_slice(5 + response.len()).assume_all_init() };
-		buffer[0..4].copy_from_slice(&[
-			(response.len() >> 24) as u8,
-			(response.len() >> 16) as u8,
-			(response.len() >> 8) as u8,
-			response.len() as u8,
-		]);
+		let mut buffer = unsafe { CBox::<u8>::new_zeroed_slice(len).assume_all_init() };
+		buffer[0..4].copy_from_slice(&(len as u32).to_be_bytes());
 		buffer[4] = response_type;
 		buffer[5..].copy_from_slice(response);
 		*dest = PamResponse {

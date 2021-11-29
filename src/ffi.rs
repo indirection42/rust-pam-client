@@ -131,10 +131,8 @@ unsafe fn msg_content_to_bin(msg: &*const c_char) -> (u8, &[u8]) {
 	} else {
 		// Decode length and data
 		// Sound as long as the PAM modules set the length correctly
-		let len = (*msg as u32) << 24
-			| (*msg.add(1) as u32) << 16
-			| (*msg.add(2) as u32) << 8
-			| (*msg.add(3) as u32);
+		let len = u32::from_be_bytes(*(*msg as *const [u8; 4]));
+		let len = len.saturating_sub(5); // Subtract header length
 		let type_ = *msg.add(4) as u8;
 		let data = slice::from_raw_parts(msg.add(5) as *const u8, len as usize);
 		(type_, data)
@@ -612,7 +610,7 @@ mod tests {
 		let c_callback = pam_conv.conv.unwrap();
 		let appdata = pam_conv.appdata_ptr;
 
-		let buffer: Vec<u8> = vec![0, 0, 0, 1, 0xFF, 0x42];
+		let buffer: Vec<u8> = vec![0, 0, 0, 6, 0xFF, 0x42];
 
 		let msg = PamMessage {
 			msg_style: pam_sys::PAM_BINARY_PROMPT as c_int,
