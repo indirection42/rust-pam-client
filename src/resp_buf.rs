@@ -35,14 +35,16 @@ impl ResponseBuffer {
 	/// 2. `len` is so large, the total allocated memory would exceed [`isize::MAX`],
 	/// 3. the memory could not be allocated.
 	pub fn new(len: isize) -> Result<Self> {
-		if len <= 0 {
-			return Err(ErrorCode::BUF_ERR.into());
+		match len {
+			1..=isize::MAX => {
+				#[allow(clippy::cast_sign_loss)]
+				let buffer = CBox::<PamResponse>::try_new_zeroed_slice(len as usize)?;
+				Ok(Self {
+					items: unsafe { buffer.assume_all_init() },
+				})
+			}
+			_ => Err(ErrorCode::BUF_ERR.into()),
 		}
-		#[allow(clippy::cast_sign_loss)]
-		let buffer = CBox::<PamResponse>::try_new_zeroed_slice(len as usize)?;
-		Ok(Self {
-			items: unsafe { buffer.assume_all_init() },
-		})
 	}
 
 	/// Returns the number of elements in the buffer.
