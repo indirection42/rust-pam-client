@@ -134,10 +134,7 @@ where
 	/// Internal: Wraps a pointer to a `T`
 	#[inline]
 	fn wrap(raw: *mut T) -> Option<Self> {
-		match NonNull::new(raw) {
-			None => None,
-			Some(result) => Some(Self(result)),
-		}
+		NonNull::new(raw).map(Self)
 	}
 
 	/// Internal: Builds an `Error` instance with `BUF_ERR` error code
@@ -293,26 +290,30 @@ impl<T: ?Sized + Hash> Hash for CBox<T> {
 }
 
 impl<T: ?Sized> borrow::Borrow<T> for CBox<T> {
+	#[inline]
 	fn borrow(&self) -> &T {
-		&**self
+		self
 	}
 }
 
 impl<T: ?Sized> borrow::BorrowMut<T> for CBox<T> {
+	#[inline]
 	fn borrow_mut(&mut self) -> &mut T {
-		&mut **self
+		self
 	}
 }
 
 impl<T: ?Sized> AsRef<T> for CBox<T> {
+	#[inline]
 	fn as_ref(&self) -> &T {
-		&**self
+		self
 	}
 }
 
 impl<T: ?Sized> AsMut<T> for CBox<T> {
+	#[inline]
 	fn as_mut(&mut self) -> &mut T {
-		&mut **self
+		self
 	}
 }
 

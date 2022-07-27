@@ -43,7 +43,7 @@ impl EnvItem {
 		let sep = element
 			.iter()
 			.position(|b| *b == b'=')
-			.unwrap_or_else(|| element.len());
+			.unwrap_or(element.len());
 		(
 			OsStr::from_bytes(&element[..sep]),
 			OsStr::from_bytes(&element[sep + 1..]),
@@ -204,7 +204,6 @@ impl EnvList {
 	///
 	/// The iteration happens in deterministic, but unspecified order.
 	#[inline]
-	#[must_use]
 	pub fn iter(&self) -> Iter {
 		self.0.iter()
 	}
@@ -261,10 +260,10 @@ impl<'a> IntoIterator for &'a EnvList {
 }
 
 /// Provide compatibility with the 3rd parameter of `nix::unistd::execve`.
-impl<'a> AsRef<[EnvItem]> for EnvList {
+impl AsRef<[EnvItem]> for EnvList {
 	#[inline]
 	fn as_ref(&self) -> &[EnvItem] {
-		&*self.0
+		&self.0
 	}
 }
 
@@ -368,10 +367,7 @@ impl<'a> Iterator for TupleIter<'a> {
 	type Item = (&'a OsStr, &'a OsStr);
 
 	fn next(&mut self) -> Option<Self::Item> {
-		match self.0.next() {
-			Some(item) => Some(item.key_value()),
-			None => None,
-		}
+		self.0.next().map(|item| item.key_value())
 	}
 
 	#[inline]

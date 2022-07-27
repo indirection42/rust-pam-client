@@ -96,7 +96,8 @@ impl ConversationHandler for Conversation {
 		if io::stderr().lock().write_all(msg.to_bytes()).is_err() {
 			return Err(ErrorCode::CONV_ERR);
 		}
-		match io::stdin().lock().read_line(&mut line) {
+		let result = io::stdin().lock().read_line(&mut line);
+		match result {
 			Err(_) | Ok(0) => Err(ErrorCode::CONV_ERR),
 			Ok(_) => {
 				trim_newline(&mut line);

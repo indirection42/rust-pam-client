@@ -156,10 +156,7 @@ impl<T> ErrorWith<T> {
 		ErrorWith::<U> {
 			code: self.code,
 			msg: self.msg,
-			payload: match self.payload {
-				None => None,
-				Some(object) => Some(func(object)),
-			},
+			payload: self.payload.map(func),
 		}
 	}
 

@@ -196,12 +196,12 @@ where
 
 	/// Returns a reference to the conversation handler.
 	pub fn conversation(&self) -> &ConvT {
-		&*(self.conversation)
+		&self.conversation
 	}
 
 	/// Returns a mutable reference to the conversation handler.
 	pub fn conversation_mut(&mut self) -> &mut ConvT {
-		&mut *(self.conversation)
+		&mut self.conversation
 	}
 
 	/// Returns raw PAM information.
