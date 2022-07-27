@@ -19,7 +19,7 @@ extern crate pam_sys;
 use crate::{ExtResult, Flag, Result, PAM_SUCCESS};
 
 use libc::{c_char, c_int, c_void};
-use pam_sys::pam_handle as RawPamHandle;
+use pam_sys::pam_handle_t as RawPamHandle;
 use pam_sys::{
 	pam_acct_mgmt, pam_authenticate, pam_chauthtok, pam_close_session, pam_end, pam_get_item,
 	pam_getenv, pam_getenvlist, pam_open_session, pam_putenv, pam_set_item, pam_setcred, pam_start,
