@@ -173,8 +173,7 @@ where
 	/// The memory may be released with [`libc::free()`], but then no
 	/// destructors will be called. Use [`CBox::from_raw()`] instead to put
 	/// the cleanup responsibility back to `CBox`.
-	#[rustversion::attr(since(1.46), const)]
-	pub fn into_raw(b: CBox<T>) -> *mut T {
+	pub const fn into_raw(b: CBox<T>) -> *mut T {
 		let ptr: NonNull<T> = b.0;
 		mem::forget(b);
 		ptr.as_ptr()
@@ -191,8 +190,7 @@ impl<T> CBox<[T]> {
 	/// The memory may be released with [`libc::free()`], but then no
 	/// destructors will be called. Use [`CBox::from_raw_slice()`] instead
 	/// to put the cleanup responsibility back to `CBox`.
-	#[rustversion::attr(since(1.46), const)]
-	pub fn into_raw_unsized(b: CBox<[T]>) -> *mut T {
+	pub const fn into_raw_unsized(b: CBox<[T]>) -> *mut T {
 		let ptr: NonNull<_> = b.0;
 		mem::forget(b);
 		ptr.as_ptr() as *mut T
@@ -207,7 +205,7 @@ impl<T> CBox<MaybeUninit<T>> {
 	/// It is up to the caller to guarantee that the `MaybeUninit<T>` elements
 	/// really are in an initialized state. Calling this when the content is
 	/// not yet fully initialized causes undefined behavior.
-	pub unsafe fn assume_init(self) -> CBox<T> {
+	pub const unsafe fn assume_init(self) -> CBox<T> {
 		CBox::<T>(NonNull::new_unchecked(CBox::into_raw(self) as *mut _))
 	}
 }
@@ -220,7 +218,7 @@ impl<T> CBox<[MaybeUninit<T>]> {
 	/// It is up to the caller to guarantee that the `MaybeUninit<T>` elements
 	/// really are in an initialized state. Calling this when the content is
 	/// not yet fully initialized causes undefined behavior.
-	pub unsafe fn assume_all_init(self) -> CBox<[T]> {
+	pub const unsafe fn assume_all_init(self) -> CBox<[T]> {
 		CBox::<[T]>(NonNull::new_unchecked(CBox::into_raw(self) as *mut _))
 	}
 }

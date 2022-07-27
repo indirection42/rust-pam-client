@@ -45,9 +45,9 @@ This includes in detail:
  
 ## Supported Rust versions
 
-The minimum supported Rust toolchain version is Rust **1.43.0**.
+The minimum supported Rust toolchain version is Rust **1.46.0**.
 
-Currently tested up to version 1.52.0-nightly.
+Currently tested up to version 1.64.0-nightly.
 
 ## Platform support
 
