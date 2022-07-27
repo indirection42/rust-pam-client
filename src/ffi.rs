@@ -249,16 +249,15 @@ mod tests {
 	use libc::free;
 	use std::ptr;
 
-	fn make_handler() -> (Box<Conversation>, PamConversation) {
-		let mut handler = Box::new(Conversation::with_credentials("test usër", "paßword"));
-		let pam_conv = to_pam_conv(&mut handler);
-		return (handler, pam_conv);
+	fn make_handler() -> Box<Conversation> {
+		Box::new(Conversation::with_credentials("test usër", "paßword"))
 	}
 
 	/// Check edge cases for invalid parameters to `pam_conv`
 	#[test]
 	fn test_edge_cases() {
-		let (handler, pam_conv) = make_handler();
+		let mut handler = make_handler();
+		let pam_conv = to_pam_conv(&mut handler);
 		let c_callback = pam_conv.conv.unwrap();
 		let appdata = pam_conv.appdata_ptr;
 
@@ -330,7 +329,8 @@ mod tests {
 	/// case defined.
 	#[test]
 	fn test_zero_num() {
-		let (handler, pam_conv) = make_handler();
+		let mut handler = make_handler();
+		let pam_conv = to_pam_conv(&mut handler);
 		let c_callback = pam_conv.conv.unwrap();
 		let appdata = pam_conv.appdata_ptr;
 
@@ -366,7 +366,8 @@ mod tests {
 
 	/// Check if `pam_conv` correctly answers a prompt
 	fn test_prompt(style: c_int, prompt: &str, expected: &str) {
-		let (handler, pam_conv) = make_handler();
+		let mut handler = make_handler();
+		let pam_conv = to_pam_conv(&mut handler);
 		let c_callback = pam_conv.conv.unwrap();
 		let appdata = pam_conv.appdata_ptr;
 
@@ -483,7 +484,8 @@ mod tests {
 
 	/// Check if `pam_conv` correctly handles a info/error message
 	fn test_output_msg(style: c_int, text: Option<&str>) -> LogEntry {
-		let (mut handler, pam_conv) = make_handler();
+		let mut handler = make_handler();
+		let pam_conv = to_pam_conv(&mut handler);
 		let c_callback = pam_conv.conv.unwrap();
 		let appdata = pam_conv.appdata_ptr;
 
@@ -606,7 +608,8 @@ mod tests {
 	#[test]
 	#[cfg(target_os = "linux")]
 	fn test_binary() {
-		let (_handler, pam_conv) = make_handler();
+		let mut handler = make_handler();
+		let pam_conv = to_pam_conv(&mut handler);
 		let c_callback = pam_conv.conv.unwrap();
 		let appdata = pam_conv.appdata_ptr;
 

@@ -9,9 +9,9 @@
  ***********************************************************************/
 
 use crate::char_ptr_to_str;
+use crate::context::PamHandle;
 #[doc(no_inline)]
 pub use crate::ErrorCode;
-use pam_sys::pam_handle as PamHandle;
 use pam_sys::pam_strerror;
 
 use std::any::type_name;
@@ -95,14 +95,14 @@ impl<T> ErrorWith<T> {
 	///
 	/// Functions that consume a struct can use the payload to transfer back
 	/// ownership in error cases.
-	pub fn with_payload(
-		handle: &mut PamHandle,
+	pub(crate) fn with_payload(
+		handle: PamHandle,
 		code: ErrorCode,
 		payload: Option<T>,
 	) -> ErrorWith<T> {
 		Self {
 			code,
-			msg: char_ptr_to_str(unsafe { pam_strerror(handle, code.repr()) })
+			msg: char_ptr_to_str(unsafe { pam_strerror(handle.into(), code.repr()) })
 				.unwrap_or("")
 				.into(),
 			payload,
@@ -196,7 +196,7 @@ pub type Error = ErrorWith<NoPayload>;
 
 impl Error {
 	/// Creates a new [`Error`].
-	pub fn new(handle: &mut PamHandle, code: ErrorCode) -> Error {
+	pub(crate) fn new(handle: PamHandle, code: ErrorCode) -> Error {
 		Self::with_payload(handle, code, None)
 	}
 
@@ -274,6 +274,7 @@ where
 /// println!("{:?}", error);
 /// ```
 impl From<ErrorCode> for Error {
+	#[inline]
 	fn from(code: ErrorCode) -> Self {
 		Error {
 			code,
