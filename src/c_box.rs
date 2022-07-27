@@ -203,7 +203,7 @@ impl<T> CBox<[T]> {
 }
 
 impl<T> CBox<MaybeUninit<T>> {
-	/// Converts a `CBox` containing `MaybeUninit<T>` to `CBox<[T]>` by
+	/// Converts a `CBox` containing `MaybeUninit<T>` to `CBox<T>` by
 	/// assuming the content is in an initialized state.
 	///
 	/// # Safety
