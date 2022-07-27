@@ -1,7 +1,7 @@
 //! PAM context and related helpers
 
 /***********************************************************************
- * (c) 2021 Christoph Grenz <christophg+gitorious @ grenz-bonn.de>     *
+ * (c) 2021-2022 Christoph Grenz <christophg+gitorious @ grenz-bonn.de>*
  *                                                                     *
  * This Source Code Form is subject to the terms of the Mozilla Public *
  * License, v. 2.0. If a copy of the MPL was not distributed with this *
@@ -59,11 +59,12 @@ macro_rules! impl_pam_str_item {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PamHandle(NonNull<RawPamHandle>);
 
+/// PAM handle wrapper
 impl PamHandle {
-	// Create a PAM handle from a raw handle pointer.
-	//
-	// # Safety
-	// The argument `ptr` must be NULL or a valid non-dangling PAM handle created by `pam_start`.
+	/// Create a PAM handle from a raw handle pointer.
+	///
+	/// # Safety
+	/// The argument `ptr` must be NULL or a valid non-dangling PAM handle created by `pam_start`.
 	#[inline]
 	pub unsafe fn new(ptr: *mut RawPamHandle) -> Option<Self> {
 		NonNull::new(ptr).map(Self)
