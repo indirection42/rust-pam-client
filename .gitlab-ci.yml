@@ -45,7 +45,7 @@ test:stable:
   before_script:
     - apt-get update -qy
     - apt-get -qy install libpam0g-dev llvm clang libclang-dev
-    - cargo install cargo-hack
+    - cargo install cargo-hack --force
     - wget https://grenz-bonn.de/rust2junit.py
     - chmod +x rust2junit.py
   script:
@@ -67,7 +67,7 @@ coverage:
     - rustup toolchain install nightly --profile=minimal
     - rustup component add llvm-tools-preview --toolchain nightly
     - rustup default nightly
-    - cargo install cargo-llvm-cov
+    - cargo install cargo-llvm-cov --force
   script:
     - cargo llvm-cov clean
     - cargo llvm-cov --doctests --html --hide-instantiations --remap-path-prefix
@@ -79,6 +79,7 @@ coverage:
       - target/llvm-cov/
     expire_in: 1 week
   needs: []
+  cache: {}
 
 clippy:
   stage: test
@@ -86,7 +87,7 @@ clippy:
     - apt-get update -qy
     - apt-get -qy install libpam0g-dev llvm clang libclang-dev
     - rustup component add clippy
-    - cargo install gitlab_clippy
+    - cargo install gitlab_clippy --force
   script:
     - cargo clippy -- ${CLIPPY_OPTS}
   after_script:
@@ -98,6 +99,15 @@ clippy:
   only:
     - master
   needs: []
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - .cargo/bin
+      - .cargo/registry/index
+      - .cargo/registry/cache
+      - target/debug/deps
+      - target/debug/build
+    policy: pull
 
 pages:
   stage: pages
@@ -121,6 +131,13 @@ pages:
   artifacts:
     paths:
       - public
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - .cargo/bin
+      - .cargo/registry/index
+      - .cargo/registry/cache
+    policy: pull
 
 publish:
   stage: deploy
@@ -135,3 +152,10 @@ publish:
       - $CI_COMMIT_TAG =~ /^v[0-9]/
   script:
     - cargo publish --no-verify
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - .cargo/bin
+      - .cargo/registry/index
+      - .cargo/registry/cache
+    policy: pull
