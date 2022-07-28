@@ -62,8 +62,8 @@ coverage:
   before_script:
     - apt-get update -qy
     - apt-get -qy install libpam0g-dev llvm clang libclang-dev
-    - rustup toolchain install nightly
-    - rustup default nightly
+    - CARGO_HOME=/usr/local/cargo rustup toolchain install nightly --profile=minimal
+    - CARGO_HOME=/usr/local/cargo rustup default nightly
     - cargo install cargo-llvm-cov
   script:
     - cargo llvm-cov clean
