@@ -4,7 +4,7 @@ stages:
   - pages
   - deploy
 
-cache:
+cache: &global_cache
   key: ${CI_COMMIT_REF_SLUG}
   paths:
     - .cargo/bin
@@ -27,7 +27,7 @@ build:stable:
   stage: build
   before_script:
     - apt-get update -qy
-    - apt-get -qy install libpam0g-dev llvm clang libclang-dev
+    - apt-get -qy install libpam0g-dev llvm clang
   script:
     - cargo build --workspace --all-features --color=always
   artifacts:
@@ -44,7 +44,7 @@ test:stable:
     - build:stable
   before_script:
     - apt-get update -qy
-    - apt-get -qy install libpam0g-dev llvm clang libclang-dev
+    - apt-get -qy install libpam0g-dev llvm clang
     - cargo install cargo-hack --force
     - wget https://grenz-bonn.de/rust2junit.py
     - chmod +x rust2junit.py
@@ -63,14 +63,14 @@ coverage:
     CARGO_HOME: /usr/local/cargo
   before_script:
     - apt-get update -qy
-    - apt-get -qy install libpam0g-dev llvm clang libclang-dev
+    - apt-get -qy install libpam0g-dev llvm clang
     - rustup toolchain install nightly --profile=minimal
     - rustup component add llvm-tools-preview --toolchain nightly
     - rustup default nightly
     - cargo install cargo-llvm-cov --force
   script:
     - cargo llvm-cov clean
-    - cargo llvm-cov --doctests --html --hide-instantiations --remap-path-prefix
+    - cargo llvm-cov --doctests --html --hide-instantiations --remap-path-prefix --ignore-filename-regex '^builds/'
     - COVERAGE=$(grep '</table>' target/llvm-cov/html/index.html | sed 's#.*<pre>\s*\([0-9.%]*\)\s[^<>]*</pre></td><td[^<>]*><pre>[^<>]*</pre></td></tr></table>.*#\1#')
     - echo "Coverage:" $COVERAGE
   artifacts:
@@ -85,7 +85,7 @@ clippy:
   stage: test
   before_script:
     - apt-get update -qy
-    - apt-get -qy install libpam0g-dev llvm clang libclang-dev
+    - apt-get -qy install libpam0g-dev llvm clang
     - rustup component add clippy
     - cargo install gitlab_clippy --force
   script:
@@ -100,13 +100,7 @@ clippy:
     - master
   needs: []
   cache:
-    key: ${CI_COMMIT_REF_SLUG}
-    paths:
-      - .cargo/bin
-      - .cargo/registry/index
-      - .cargo/registry/cache
-      - target/debug/deps
-      - target/debug/build
+    <<: *global_cache
     policy: pull
 
 pages:
