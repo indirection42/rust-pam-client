@@ -40,31 +40,40 @@ test:stable:
   before_script:
     - apt-get update -qy
     - apt-get -qy install libpam0g-dev llvm clang libclang-dev
-    - 'echo "deb http://deb.debian.org/debian/ sid main contrib" >> /etc/apt/sources.list'
-    - apt-get update -qy
-    - apt-get -qy install kcov
     - cargo install cargo-hack
     - wget https://grenz-bonn.de/rust2junit.py
     - chmod +x rust2junit.py
   script:
-    - export RUSTFLAGS="-C link-dead-code -C inline-threshold=0"
     - cargo hack check --workspace --feature-powerset --no-dev-deps --color=always
     - cargo test --workspace --all-features --verbose | ./rust2junit.py
-    - kcov --verify
-        --include-pattern=/rust-pam-client/src/
-        --exclude-line='#[derive,pub struct'
-        --exclude-region='#[cfg(test)]:#[cfg(testkcovstopmarker)]'
-        target/cov
-        target/debug/deps/pam_client-???????????????? --test-threads 1
-    - COVERAGE=$(grep -Po 'covered":.*?[^\\]"' target/cov/index.js | grep "[0-9]*\.[0-9]" -o)
+  artifacts:
+    public: false
+    expire_in: 1 week
+    reports:
+      junit: junit.xml
+
+coverage:
+  stage: test
+  needs:
+    - build:stable
+  dependencies:
+    - build:stable
+  before_script:
+    - apt-get update -qy
+    - apt-get -qy install libpam0g-dev llvm clang libclang-dev
+    - rustup toolchain install nightly
+    - rustup default nightly
+    - cargo install cargo-llvm-cov
+  script:
+    - cargo llvm-cov clean
+    - cargo llvm-cov --doctests --html --hide-instantiations --remap-path-prefix
+    - COVERAGE=$(grep '</table>' target/llvm-cov/html/index.html | sed 's#.*<pre>\s*\([0-9.%]*\)\s[^<>]*</pre></td><td[^<>]*><pre>[^<>]*</pre></td></tr></table>.*#\1#')
     - echo "Coverage:" $COVERAGE
   artifacts:
     public: false
     paths:
-      - target/cov/
+      - target/llvm-cov/
     expire_in: 1 week
-    reports:
-      junit: junit.xml
 
 clippy:
   stage: test
@@ -90,9 +99,9 @@ pages:
   only:
     - master
   needs:
-    - test:stable
+    - coverage
   dependencies:
-    - test:stable
+    - coverage
   before_script:
     - apt-get update -qy
     - apt-get -qy install libpam0g-dev llvm clang libclang-dev
@@ -101,8 +110,8 @@ pages:
     - rm -rf public || true
     - mkdir public
     - cp -R target/doc/* public
-    - cp -R target/cov public/
-    - find -L public/cov/ -type l -delete
+    - cp -R target/llvm-cov public/
+    - mv public/llvm-cov public/cov
   artifacts:
     paths:
       - public
