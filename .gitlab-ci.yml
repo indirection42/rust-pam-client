@@ -10,7 +10,6 @@ cache:
     - .cargo/bin
     - .cargo/registry/index
     - .cargo/registry/cache
-    - .cargo/git/db
     - target/debug/deps
     - target/debug/build
   policy: pull-push
@@ -79,6 +78,7 @@ coverage:
     paths:
       - target/llvm-cov/
     expire_in: 1 week
+  needs: []
 
 clippy:
   stage: test
