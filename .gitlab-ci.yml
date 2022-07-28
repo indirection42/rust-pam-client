@@ -27,6 +27,7 @@ default:
 build:stable:
   stage: build
   before_script:
+    - mkdir -p .cargo/apt-cache
     - apt-get update -qy
     - apt-get -qy -o dir::cache::archives="${CI_PROJECT_DIR}/.cargo/apt-cache" install libpam0g-dev llvm clang
   script:
