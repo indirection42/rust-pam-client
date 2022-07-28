@@ -13,6 +13,7 @@ cache:
 variables:
   CARGO_INCREMENTAL: 0
   CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
+  RUSTUP_HOME: /usr/local/rustup
   CLIPPY_OPTS: -W clippy::pedantic -A clippy::must_use_candidate -A clippy::doc_markdown -A clippy::empty_enum -A clippy::module_name_repetitions -A clippy::missing_errors_doc -A clippy::cast_possible_wrap
 
 default:
@@ -111,7 +112,8 @@ pages:
     - mkdir public
     - cp -R target/doc/* public
     - cp -R target/llvm-cov public/
-    - mv public/llvm-cov public/cov
+    - mv public/llvm-cov/html public/cov
+    - rm -r public/llvm-cov
   artifacts:
     paths:
       - public
