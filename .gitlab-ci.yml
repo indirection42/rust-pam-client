@@ -7,7 +7,12 @@ stages:
 cache:
   key: ${CI_COMMIT_REF_SLUG}
   paths:
-    - .cargo/
+    - .cargo/bin
+    - .cargo/registry/index
+    - .cargo/registry/cache
+    - .cargo/git/db
+    - target/debug/deps
+    - target/debug/build
   policy: pull-push
 
 variables:
@@ -55,16 +60,14 @@ test:stable:
 
 coverage:
   stage: test
-  needs:
-    - build:stable
-  dependencies:
-    - build:stable
+  variables:
+    - CARGO_HOME: /usr/local/cargo
   before_script:
     - apt-get update -qy
     - apt-get -qy install libpam0g-dev llvm clang libclang-dev
-    - CARGO_HOME=/usr/local/cargo rustup toolchain install nightly --profile=minimal
-    - CARGO_HOME=/usr/local/cargo rustup component add llvm-tools-preview --toolchain nightly
-    - CARGO_HOME=/usr/local/cargo rustup default nightly
+    - rustup toolchain install nightly --profile=minimal
+    - rustup component add llvm-tools-preview --toolchain nightly
+    - rustup default nightly
     - cargo install cargo-llvm-cov
   script:
     - cargo llvm-cov clean
