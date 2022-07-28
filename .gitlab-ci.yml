@@ -21,7 +21,7 @@ variables:
   CLIPPY_OPTS: -W clippy::pedantic -A clippy::must_use_candidate -A clippy::doc_markdown -A clippy::empty_enum -A clippy::module_name_repetitions -A clippy::missing_errors_doc -A clippy::cast_possible_wrap
 
 default:
-  image: rust:buster
+  image: rust:bullseye
 
 build:stable:
   stage: build
