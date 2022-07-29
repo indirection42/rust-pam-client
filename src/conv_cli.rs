@@ -34,7 +34,7 @@ fn trim_newline(s: &mut String) {
 /// *This struct is unavailable if pam-client is built without the `"cli"` feature.*
 ///
 /// Prompts, info and error messages will be written to STDERR, non-secret
-/// input in read from STDIN and [rpassword][`rpassword::read_password_from_tty`]
+/// input in read from STDIN and [rpassword][`rpassword::prompt_password`]
 /// is used to prompt the user for passwords.
 ///
 /// # Limitations
@@ -108,7 +108,7 @@ impl ConversationHandler for Conversation {
 
 	fn prompt_echo_off(&mut self, msg: &CStr) -> Result<CString, ErrorCode> {
 		let prompt = msg.to_string_lossy();
-		match rpassword::read_password_from_tty(Some(&prompt)) {
+		match rpassword::prompt_password(&prompt) {
 			Err(_) => Err(ErrorCode::CONV_ERR),
 			Ok(password) => CString::new(password).map_err(|_| ErrorCode::CONV_ERR),
 		}
