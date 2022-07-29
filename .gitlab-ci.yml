@@ -72,7 +72,7 @@ coverage:
     - cargo install cargo-llvm-cov --force
   script:
     - cargo llvm-cov clean
-    - cargo llvm-cov --doctests --html --hide-instantiations --remap-path-prefix --ignore-filename-regex builds/
+    - cargo llvm-cov --doctests --html --hide-instantiations --remap-path-prefix --ignore-filename-regex builds/ -- --include-ignored
     - COVERAGE=$(grep '</table>' target/llvm-cov/html/index.html | sed 's#.*<pre>\s*\([0-9.]*\)%[^<>]*</pre></td><td[^<>]*><pre>[^<>]*</pre></td></tr></table>.*#\1#')
     - echo "Coverage:" $COVERAGE
   coverage: '/Coverage: \d+.\d+/'

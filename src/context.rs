@@ -848,7 +848,6 @@ mod tests {
 	/// Currently it is only checked if some function crashes
 	/// or panics, not if the authentication succeeds.
 	#[test]
-	#[cfg(not(coverage))]
 	#[cfg_attr(not(feature = "full_test"), ignore)]
 	fn test_full() {
 		let mut context = Context::new(
