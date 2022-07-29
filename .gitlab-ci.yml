@@ -75,7 +75,7 @@ coverage:
   script:
     - cargo llvm-cov clean
     - cargo llvm-cov --doctests --html --hide-instantiations --remap-path-prefix --ignore-filename-regex builds/
-    - COVERAGE=$(grep '</table>' target/llvm-cov/html/index.html | sed 's#.*<pre>\s*\([0-9.%]*\)\s[^<>]*</pre></td><td[^<>]*><pre>[^<>]*</pre></td></tr></table>.*#\1#')
+    - COVERAGE=$(grep '</table>' target/llvm-cov/html/index.html | sed 's#.*<pre>\s*\([0-9.]*\)%[^<>]*</pre></td><td[^<>]*><pre>[^<>]*</pre></td></tr></table>.*#\1#')
     - echo "Coverage:" $COVERAGE
   artifacts:
     public: false
