@@ -195,9 +195,13 @@ impl EnvList {
 	///
 	/// Returns `None` if the variable doesn't exist in this list.
 	#[must_use]
-	pub fn get<'a>(&'a self, name: &'_ OsStr) -> Option<&'a OsStr> {
-		self.iter_tuples()
-			.find_map(|(k, v)| if k == name { Some(v) } else { None })
+	pub fn get<T: AsRef<OsStr>>(&self, name: T) -> Option<&OsStr> {
+		#[inline]
+		fn get<'a>(list: &'a EnvList, name: &'_ OsStr) -> Option<&'a OsStr> {
+			list.iter_tuples()
+				.find_map(|(k, v)| if k == name { Some(v) } else { None })
+		}
+		get(self, name.as_ref())
 	}
 
 	/// Returns an iterator over all contained variables as [`EnvItem`]s.
@@ -332,14 +336,14 @@ where
 }
 
 /// Indexing with `list[key]`
-impl Index<&OsStr> for EnvList {
+impl<T: AsRef<OsStr>> Index<T> for EnvList {
 	type Output = OsStr;
 
 	/// Returns a reference to the value of the named environment variable.
 	///
 	/// # Panics
-	/// Panics if the  environment variable is not present in the `EnvList`.
-	fn index(&self, name: &OsStr) -> &Self::Output {
+	/// Panics if the environment variable is not present in the `EnvList`.
+	fn index(&self, name: T) -> &Self::Output {
 		self.get(name).expect("environment variable not found")
 	}
 }

@@ -774,8 +774,8 @@ mod tests {
 		assert!(context.getenv("TESTNONEXIST").is_none());
 		let env = context.envlist();
 		assert!(env.len() > 0);
-		let _ = env.get(&OsStr::new("TEST")).unwrap();
-		let _ = env.get(&OsStr::new("TESTNONEXIST")).is_none();
+		let _ = env.get("TEST").unwrap();
+		let _ = env.get("TESTNONEXIST").is_none();
 		for (key, value) in env.iter_tuples() {
 			if key.to_string_lossy() == "TEST" {
 				assert_eq!(value.to_string_lossy(), "1");
@@ -805,7 +805,7 @@ mod tests {
 			env.as_ref().cmp(context.envlist().as_ref()),
 			std::cmp::Ordering::Equal
 		);
-		assert_eq!(&env[&OsString::from("TEST".to_string())], "1");
+		assert_eq!(&env["TEST"], "1");
 		assert_eq!(env.len(), env.iter_tuples().size_hint().0);
 		let list: std::vec::Vec<&CStr> = (&env).into();
 		assert_eq!(list.len(), env.len());
