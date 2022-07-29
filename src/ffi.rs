@@ -27,7 +27,7 @@ use std::slice;
 pub(crate) fn to_pam_conv<T: ConversationHandler>(callback: &mut Box<T>) -> PamConversation {
 	PamConversation {
 		conv: Some(pam_converse::<T>),
-		appdata_ptr: (&mut **callback) as *mut T as *mut libc::c_void,
+		appdata_ptr: ((&mut **callback) as *mut T).cast(),
 	}
 }
 
@@ -125,16 +125,17 @@ unsafe fn msg_content_to_cstr(msg: &*const c_char) -> &CStr {
 /// # Safety
 /// This is sound as long as the message type implies a binary message
 /// and the PAM modules play by the rules.
+#[allow(clippy::cast_sign_loss)]
 unsafe fn msg_content_to_bin(msg: &*const c_char) -> (u8, &[u8]) {
 	if msg.is_null() {
 		(0, &[])
 	} else {
 		// Decode length and data
 		// Sound as long as the PAM modules set the length correctly
-		let len = u32::from_be_bytes(*(*msg as *const [u8; 4]));
+		let len = u32::from_be_bytes(*(*msg).cast());
 		let len = len.saturating_sub(5); // Subtract header length
 		let type_ = *msg.add(4) as u8;
-		let data = slice::from_raw_parts(msg.add(5) as *const u8, len as usize);
+		let data = slice::from_raw_parts(msg.add(5).cast(), len as usize);
 		(type_, data)
 	}
 }
@@ -159,7 +160,7 @@ pub(crate) unsafe extern "C" fn pam_converse<T: ConversationHandler>(
 
 	// Extract conversation handler from `appdata_ptr`.
 	// This is sound, as we did the reverse in `to_pam_conv`.
-	let handler = &mut *(appdata_ptr as *mut T);
+	let handler = &mut *(appdata_ptr.cast::<T>());
 
 	// Prepare response buffer
 	let mut responses = match ResponseBuffer::new(num_msg as isize) {

@@ -188,7 +188,7 @@ impl EnvList {
 	pub(crate) unsafe fn new(data: *mut *mut c_char) -> Self {
 		assert!(!data.is_null());
 		let len = count_items(data as *const *const c_char);
-		Self(CBox::from_raw_slice(data as *mut EnvItem, len))
+		Self(CBox::from_raw_slice(data.cast(), len))
 	}
 
 	/// Returns a reference to the value of the named environment variable.
@@ -241,7 +241,7 @@ impl fmt::Display for EnvList {
 	/// Formats the environment list as a multi-line string
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		for item in self.0.iter() {
-			writeln!(f, "{}", item.as_cstr().to_string_lossy())?
+			writeln!(f, "{}", item.as_cstr().to_string_lossy())?;
 		}
 		Ok(())
 	}
@@ -272,7 +272,7 @@ impl From<EnvList> for Vec<(OsString, OsString)> {
 	fn from(list: EnvList) -> Self {
 		let mut vec = Vec::with_capacity(list.len());
 		for (key, value) in list.iter_tuples() {
-			vec.push((key.to_owned(), value.to_owned()))
+			vec.push((key.to_owned(), value.to_owned()));
 		}
 		vec
 	}
@@ -290,7 +290,7 @@ impl From<EnvList> for Vec<CString> {
 	fn from(list: EnvList) -> Self {
 		let mut vec = Vec::with_capacity(list.len());
 		for item in list.0.iter() {
-			vec.push(item.as_cstr().to_owned())
+			vec.push(item.as_cstr().to_owned());
 		}
 		vec
 	}
@@ -301,7 +301,7 @@ impl<'a> From<&'a EnvList> for Vec<&'a CStr> {
 	fn from(list: &'a EnvList) -> Self {
 		let mut vec = Vec::with_capacity(list.len());
 		for item in list.0.iter() {
-			vec.push(item.as_cstr())
+			vec.push(item.as_cstr());
 		}
 		vec
 	}
@@ -367,7 +367,7 @@ impl<'a> Iterator for TupleIter<'a> {
 	type Item = (&'a OsStr, &'a OsStr);
 
 	fn next(&mut self) -> Option<Self::Item> {
-		self.0.next().map(|item| item.key_value())
+		self.0.next().map(EnvItem::key_value)
 	}
 
 	#[inline]

@@ -14,6 +14,7 @@ use crate::ConversationHandler;
 use crate::{ExtResult, Flag, Result};
 
 use pam_sys::{pam_close_session, pam_setcred};
+use std::mem::drop;
 
 /// Token type to resume RAII handling of a session that was released with [`Session::leak()`].
 ///
@@ -191,12 +192,12 @@ where
 		if self.session_active {
 			let status = unsafe { pam_close_session(handle, Flag::NONE.bits()) };
 			self.session_active = false;
-			let _ = self.context.wrap_pam_return(status);
+			drop(self.context.wrap_pam_return(status));
 		}
 		if self.credentials_active {
 			let status = unsafe { pam_setcred(handle, (Flag::DELETE_CRED | Flag::SILENT).bits()) };
 			self.credentials_active = false;
-			let _ = self.context.wrap_pam_return(status);
+			drop(self.context.wrap_pam_return(status));
 		}
 	}
 }

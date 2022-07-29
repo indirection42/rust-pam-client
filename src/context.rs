@@ -39,7 +39,7 @@ macro_rules! impl_pam_str_item {
 			if ptr.is_null() {
 				return Err(Error::new(self.handle(), ErrorCode::PERM_DENIED));
 			}
-			let string = unsafe { CStr::from_ptr(ptr as *const _) }.to_string_lossy().into_owned();
+			let string = unsafe { CStr::from_ptr(ptr.cast()) }.to_string_lossy().into_owned();
 			return Ok(string);
 		}
 
@@ -49,7 +49,7 @@ macro_rules! impl_pam_str_item {
 				None => unsafe { self.set_item($item_type as c_int, ptr::null()) },
 				Some(string) => {
 					let cstring = CString::new(string).map_err(|_| Error::new(self.handle(), ErrorCode::BUF_ERR))?;
-					unsafe { self.set_item($item_type as c_int, cstring.as_ptr() as *const _) }
+					unsafe { self.set_item($item_type as c_int, cstring.as_ptr().cast()) }
 				}
 			}
 		}
@@ -321,7 +321,7 @@ where
 	#[cfg(any(target_os = "linux", doc))]
 	pub fn xauthdata(&self) -> Result<(&CStr, &[u8])> {
 		let handle = self.handle();
-		let ptr = self.get_item(pam_sys::PAM_XAUTHDATA as c_int)? as *const XAuthData;
+		let ptr = self.get_item(pam_sys::PAM_XAUTHDATA as c_int)?.cast::<XAuthData>();
 		if ptr.is_null() {
 			return Err(Error::new(handle, ErrorCode::PERM_DENIED));
 		}
@@ -336,10 +336,10 @@ where
 		#[allow(clippy::cast_sign_loss)]
 		Ok((
 			CStr::from_bytes_with_nul(unsafe {
-				slice::from_raw_parts(data.name as *const u8, data.namelen as usize + 1)
+				slice::from_raw_parts(data.name.cast(), data.namelen as usize + 1)
 			})
 			.map_err(|_| Error::new(handle, ErrorCode::BUF_ERR))?,
-			unsafe { slice::from_raw_parts(data.data as *const u8, data.datalen as usize) },
+			unsafe { slice::from_raw_parts(data.data.cast(), data.datalen as usize) },
 		))
 	}
 
@@ -363,9 +363,9 @@ where
 				#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 				let xauthdata = XAuthData {
 					namelen: name_bytes.len() as i32 - 1,
-					name: name_bytes.as_ptr() as *const _,
+					name: name_bytes.as_ptr().cast(),
 					datalen: data.len() as i32,
-					data: data.as_ptr() as *const _,
+					data: data.as_ptr().cast(),
 				};
 				unsafe {
 					self.set_item(
@@ -418,7 +418,7 @@ where
 	#[must_use]
 	#[rustversion::attr(since(1.48), doc(alias = "pam_getenvlist"))]
 	pub fn envlist(&self) -> EnvList {
-		unsafe { EnvList::new(pam_getenvlist(self.handle().into()) as *mut *mut _) }
+		unsafe { EnvList::new(pam_getenvlist(self.handle().into()).cast()) }
 	}
 
 	/// Authenticates a user.
@@ -674,7 +674,7 @@ where
 		if let Err(e) = unsafe {
 			self.set_item(
 				pam_sys::PAM_CONV as c_int,
-				&pam_conv as *const _ as *const c_void,
+				&pam_conv as *const _ as *const _,
 			)
 		} {
 			Err(e.into_with_payload((self, new_handler)))

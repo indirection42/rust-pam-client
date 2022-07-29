@@ -42,7 +42,7 @@ impl<T> CBox<T> {
 	pub fn try_new(value: T) -> ExtResult<Self, T> {
 		let size = cmp::max(mem::size_of::<T>(), 1);
 		// No size check neccessary, as `value` could be constructed.
-		let ptr = unsafe { malloc(size) } as *mut T;
+		let ptr = unsafe { malloc(size) }.cast();
 		match NonNull::new(ptr) {
 			None => Err(Self::buf_err().into_with_payload(value)),
 			Some(result) => {
@@ -67,7 +67,7 @@ impl<T> CBox<T> {
 	pub fn try_new_zeroed() -> Result<CBox<MaybeUninit<T>>> {
 		let size = cmp::max(mem::size_of::<T>(), 1);
 		// No size check neccessary, as `T` wasn't rejected by the compiler.
-		let ptr = unsafe { calloc(1, size) } as *mut MaybeUninit<T>;
+		let ptr = unsafe { calloc(1, size) }.cast();
 		match CBox::wrap(ptr) {
 			None => Err(Self::buf_err()),
 			Some(result) => Ok(result),
@@ -100,7 +100,7 @@ impl<T> CBox<T> {
 		if size > isize::MAX as usize || len > maxlen {
 			return Err(Self::buf_err());
 		}
-		let ptr = unsafe { calloc(len, size) } as *mut MaybeUninit<T>;
+		let ptr = unsafe { calloc(len, size) }.cast();
 
 		match CBox::wrap_slice(ptr, len) {
 			None => Err(Self::buf_err()),
@@ -193,7 +193,7 @@ impl<T> CBox<[T]> {
 	pub const fn into_raw_unsized(b: CBox<[T]>) -> *mut T {
 		let ptr: NonNull<_> = b.0;
 		mem::forget(b);
-		ptr.as_ptr() as *mut T
+		ptr.as_ptr().cast()
 	}
 }
 
@@ -206,7 +206,7 @@ impl<T> CBox<MaybeUninit<T>> {
 	/// really are in an initialized state. Calling this when the content is
 	/// not yet fully initialized causes undefined behavior.
 	pub const unsafe fn assume_init(self) -> CBox<T> {
-		CBox::<T>(NonNull::new_unchecked(CBox::into_raw(self) as *mut _))
+		CBox::<T>(NonNull::new_unchecked(CBox::into_raw(self).cast()))
 	}
 }
 
@@ -232,7 +232,7 @@ impl<T: ?Sized> Drop for CBox<T> {
 		// should have a pointer to `self.0` anymore.
 		unsafe {
 			drop_in_place(ptr);
-			free(ptr as *mut _);
+			free(ptr.cast());
 		};
 	}
 }

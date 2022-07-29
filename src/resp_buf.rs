@@ -12,7 +12,7 @@ use crate::error::ErrorCode;
 use crate::Result;
 
 use crate::c_box::CBox;
-use libc::{c_void, free, strdup};
+use libc::{free, strdup};
 use pam_sys::pam_response as PamResponse;
 use std::ffi::CString;
 use std::{mem, ptr, slice};
@@ -81,7 +81,7 @@ impl ResponseBuffer {
 
 		// Free the old string if there was already one in this slot
 		if !dest.resp.is_null() {
-			unsafe { free(dest.resp as *mut libc::c_void) };
+			unsafe { free(dest.resp.cast()) };
 		}
 
 		// Copy the string into the struct, so that the resulting pointer can
@@ -122,7 +122,7 @@ impl ResponseBuffer {
 
 		// Free the old string if there was already one in this slot
 		if !dest.resp.is_null() {
-			unsafe { free(dest.resp as *mut libc::c_void) };
+			unsafe { free(dest.resp.cast()) };
 		}
 
 		// Copy the data into a buffer that can be deallocated with `free()`.
@@ -132,7 +132,7 @@ impl ResponseBuffer {
 		buffer[4] = response_type;
 		buffer[5..].copy_from_slice(response);
 		*dest = PamResponse {
-			resp: CBox::into_raw_unsized(buffer) as *mut _,
+			resp: CBox::into_raw_unsized(buffer).cast(),
 			resp_retcode: 0,
 		};
 	}
@@ -175,7 +175,7 @@ impl<'a> IntoIterator for &'a ResponseBuffer {
 /// array pointer is moved to the caller!
 impl From<ResponseBuffer> for *mut PamResponse {
 	fn from(mut buf: ResponseBuffer) -> Self {
-		let result = buf.items.as_mut() as *mut [PamResponse] as *mut PamResponse;
+		let result = (buf.items.as_mut() as *mut [PamResponse]).cast();
 		mem::forget(buf);
 		result
 	}
@@ -189,7 +189,7 @@ impl Drop for ResponseBuffer {
 	fn drop(&mut self) {
 		for item in self.items.iter_mut() {
 			if !item.resp.is_null() {
-				unsafe { free(item.resp as *mut c_void) };
+				unsafe { free(item.resp.cast()) };
 				item.resp = ptr::null_mut();
 			}
 		}

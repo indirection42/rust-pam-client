@@ -123,11 +123,11 @@ impl ConversationHandler for Conversation {
 	}
 
 	fn text_info(&mut self, msg: &CStr) {
-		self.log.push(LogEntry::Info(msg.to_owned()))
+		self.log.push(LogEntry::Info(msg.to_owned()));
 	}
 
 	fn error_msg(&mut self, msg: &CStr) {
-		self.log.push(LogEntry::Error(msg.to_owned()))
+		self.log.push(LogEntry::Error(msg.to_owned()));
 	}
 
 	fn radio_prompt(&mut self, _msg: &CStr) -> Result<bool, ErrorCode> {
