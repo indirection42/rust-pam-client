@@ -33,7 +33,6 @@ build:stable:
   script:
     - cargo build --workspace --all-features --color=always
   artifacts:
-    public: false
     paths:
       - target/debug/
     expire_in: 1 day
@@ -55,7 +54,6 @@ test:stable:
     - cargo hack check --workspace --feature-powerset --no-dev-deps --color=always
     - cargo test --workspace --all-features --verbose | ./rust2junit.py
   artifacts:
-    public: false
     expire_in: 1 week
     reports:
       junit: junit.xml
@@ -77,8 +75,8 @@ coverage:
     - cargo llvm-cov --doctests --html --hide-instantiations --remap-path-prefix --ignore-filename-regex builds/
     - COVERAGE=$(grep '</table>' target/llvm-cov/html/index.html | sed 's#.*<pre>\s*\([0-9.]*\)%[^<>]*</pre></td><td[^<>]*><pre>[^<>]*</pre></td></tr></table>.*#\1#')
     - echo "Coverage:" $COVERAGE
+  coverage: '/Coverage: \d+.\d+/'
   artifacts:
-    public: false
     paths:
       - target/llvm-cov/
     expire_in: 1 week
