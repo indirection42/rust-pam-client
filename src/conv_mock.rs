@@ -155,5 +155,6 @@ mod tests {
 		assert_eq!(v.len(), 1);
 		let v: std::vec::Vec<&CString> = c.infos().collect();
 		assert_eq!(v.len(), 1);
+		assert!(format!("{:?}", &c).contains("test"));
 	}
 }

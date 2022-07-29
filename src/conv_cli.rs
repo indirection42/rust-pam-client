@@ -147,5 +147,7 @@ mod tests {
 		assert_eq!(c.error_prefix(), "ERROR: ");
 		c.text_info(&CString::new("test").unwrap());
 		c.error_msg(&CString::new("test2").unwrap());
+
+		assert!(format!("{:?}", &c).contains("ERROR: "));
 	}
 }

@@ -153,18 +153,6 @@ where
 		Self::wrap(raw).expect("cannot construct CBox from null pointer")
 	}
 
-	/// Consumes and leaks the `CBox`, returning a mutable reference, `&mut T`
-	///
-	/// The pointer must have been allocated with `malloc()` or `calloc()`.
-	///
-	/// Dropping the returned reference will cause a memory leak. If this is
-	/// not acceptable, use [`CBox::from_raw()`] to reconstruct a `CBox`
-	/// instance.
-	pub fn leak<'a>(b: CBox<T>) -> &'a mut T {
-		let ptr = CBox::into_raw(b);
-		unsafe { &mut *ptr }
-	}
-
 	/// Consumes the `CBox`, returning the wrapped raw pointer.
 	///
 	/// The receiver of the pointer is responsible for the destruction and
@@ -380,6 +368,13 @@ mod tests {
 		let _b = CBox::<u64>::new_zeroed_slice(isize::MAX as usize);
 	}
 
+	/// Check if Debug is derived and works
+	#[test]
+	fn test_debug() {
+		let b: CBox<()> = CBox::new(());
+		assert!(format!("{:?}", b).contains("CBox"));
+	}
+
 	/// Check if conversion from a null pointer panics.
 	#[test]
 	#[should_panic = "from null pointer"]
@@ -407,5 +402,25 @@ mod tests {
 		let ptr: *mut u64 = CBox::into_raw_unsized(b);
 		let b = unsafe { CBox::from_raw_slice(ptr, 3) };
 		assert_eq!(*b, [0, u64::MAX, 0]);
+	}
+
+	/// Check if a boxed slice can be created, is correctly zero-initialized,
+	/// is correctly modifiable and rewrappable.
+	#[test]
+	fn test_hash() {
+		use std::collections::hash_map::DefaultHasher;
+		use std::hash::{Hash, Hasher};
+		use std::borrow::Borrow;
+		
+		fn calc_hash<T: Hash>(t: &T) -> u64 {
+			let mut s = DefaultHasher::new();
+			t.hash(&mut s);
+			s.finish()
+		}
+
+		let b: CBox<()> = CBox::new(());
+		
+		assert_eq!(calc_hash(&()), calc_hash(&b));
+		assert_eq!(calc_hash::<()>(b.borrow()), calc_hash(&b));
 	}
 }

@@ -352,6 +352,7 @@ mod tests {
 			format!("{}", error),
 			format!("<{}>", (ErrorCode::BUF_ERR as i32))
 		);
+		assert!(error.message().is_none());
 		let _error: ErrorWith<()> = error.into();
 	}
 }

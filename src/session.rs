@@ -221,5 +221,8 @@ mod tests {
 		let _ = session.getenv("TEST");
 		let _ = session.envlist();
 		let _ = session.leak();
+
+		let session = context.unleak_session(SessionToken::PseudoSession);
+		let _ = session.leak();
 	}
 }

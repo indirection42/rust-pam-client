@@ -724,6 +724,10 @@ mod tests {
 		// Check if user name and service name are correctly saved
 		assert_eq!(context.service().unwrap(), "test");
 		assert_eq!(context.user().unwrap(), "user");
+		// Check basic properties of PamHandle
+		let h = context.handle();
+		assert_eq!(&h.clone().0, &h.0);
+		assert!(format!("{:?}", h).contains(&format!("{:?}", h.as_ptr())));
 		// Check setting/getting of string items.
 		context.set_user_prompt(Some("Who art thou? ")).unwrap();
 		assert_eq!(context.user_prompt().unwrap(), "Who art thou? ");
@@ -750,14 +754,21 @@ mod tests {
 			assert_eq!(resultname, xauthname.as_c_str());
 			assert_eq!(resultdata, &xauthdata);
 		};
+		// Check accessing the conversation handler
+		assert_eq!(context.conversation_mut() as *mut _ as *const _, context.conversation() as *const _);
+		context.conversation_mut().text_info(&CString::new("").unwrap());
 		// Check getting an unaccessible item
 		assert!(context.get_item(pam_sys::PAM_AUTHTOK as c_int).is_err());
 		// Check environment setting/getting
 		context.putenv("TEST=1").unwrap();
 		context.putenv("TEST2=2").unwrap();
+		let _ = context.putenv("\0=\0").unwrap_err();
 		assert_eq!(context.getenv("TEST").unwrap(), "1");
+		assert!(context.getenv("TESTNONEXIST").is_none());
 		let env = context.envlist();
 		assert!(env.len() > 0);
+		let _ = env.get(&OsStr::new("TEST")).unwrap();
+		let _ = env.get(&OsStr::new("TESTNONEXIST")).is_none();
 		for (key, value) in env.iter_tuples() {
 			if key.to_string_lossy() == "TEST" {
 				assert_eq!(value.to_string_lossy(), "1");
@@ -767,12 +778,14 @@ mod tests {
 			let string = item.to_string();
 			if string.starts_with("TEST=") {
 				assert_eq!(string, "TEST=1");
+				assert!(format!("{:?}", &item).contains("EnvItem"));
 			} else if string.starts_with("TEST2=") {
 				let (_, v): (&OsStr, &OsStr) = item.into();
 				assert_eq!(v.to_string_lossy(), "2");
 			}
 			let _ = item.as_ref();
 		}
+		let _ = format!("{:?}", &env);
 		assert_eq!(env.is_empty(), false);
 		assert_eq!(env.len(), env.as_ref().len());
 		assert_eq!(env.as_ref(), context.envlist().as_ref());
@@ -835,6 +848,7 @@ mod tests {
 	/// Currently it is only checked if some function crashes
 	/// or panics, not if the authentication succeeds.
 	#[test]
+	#[cfg(not(coverage))]
 	#[cfg_attr(not(feature = "full_test"), ignore)]
 	fn test_full() {
 		let mut context = Context::new(
