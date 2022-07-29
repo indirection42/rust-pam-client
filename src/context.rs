@@ -868,6 +868,30 @@ mod tests {
 		let _ = context.acct_mgmt(Flag::SILENT);
 		let _ = context.chauthtok(Flag::CHANGE_EXPIRED_AUTHTOK);
 		let _ = context.reinitialize_credentials(Flag::SILENT | Flag::NONE);
+		drop(context.open_session(Flag::SILENT));
+		drop(context.open_pseudo_session(Flag::SILENT));
+	}
+
+	/// Shallowly tests a full session cycle without authentication.
+	///
+	/// This will fail if the environment is not appropriately
+	/// prepared and the test process has no elevated rights.
+	/// Currently it is only checked if some function crashes
+	/// or panics, not if anything really succeeds.
+	///
+	/// Some operating systems besides Linux don't support this mode of operation.
+	#[test]
+	#[cfg_attr(not(feature = "full_test"), ignore)]
+	fn test_full_unauth() {
+		let mut context = Context::new(
+			"test_rust_pam_client",
+			Some("nobody"),
+			crate::conv_null::Conversation::new(),
+		)
+		.unwrap();
+		let _ = context.acct_mgmt(Flag::SILENT);
+		let _ = context.chauthtok(Flag::CHANGE_EXPIRED_AUTHTOK);
+		let _ = context.reinitialize_credentials(Flag::SILENT | Flag::NONE);
 		if let Ok(mut session) = context.open_session(Flag::SILENT) {
 			let _ = session.refresh_credentials(Flag::SILENT);
 			let _ = session.reinitialize_credentials(Flag::SILENT);
