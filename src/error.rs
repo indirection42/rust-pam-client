@@ -141,16 +141,6 @@ impl<T> ErrorWith<T> {
 		}
 	}
 
-	/// Drops any payload off the error message, if one exists.
-	#[inline]
-	pub fn drop_payload(self) -> Error {
-		Error {
-			code: self.code,
-			msg: self.msg,
-			payload: None,
-		}
-	}
-
 	/// Maps the error payload to another type
 	pub fn map<U>(self, func: impl FnOnce(T) -> U) -> ErrorWith<U> {
 		ErrorWith::<U> {
@@ -161,6 +151,7 @@ impl<T> ErrorWith<T> {
 	}
 
 	/// Removes the payload and converts to [`Error`]
+	#[inline]
 	pub fn into_without_payload(self) -> Error {
 		Error {
 			code: self.code,
