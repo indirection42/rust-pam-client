@@ -19,7 +19,7 @@ use std::ffi::{CStr, CString};
 /// Null implementation of `ConversationHandler`
 ///
 /// When a PAM module asks for any user interaction an error is returned.
-/// Error and info messages are and ignored.
+/// Error and info messages are ignored.
 ///
 /// This handler may be used for testing and for environments where no user
 /// interaction is possible, no credentials can be stored beforehand and
