@@ -65,7 +65,7 @@ mod tests {
 		let text = CString::new("test").unwrap();
 		let mut c = Conversation::default();
 		assert_eq!(format!("{:?}", c), format!("{:?}", c.clone()));
-		
+
 		assert!(c.prompt_echo_on(&text).is_err());
 		assert!(c.prompt_echo_off(&text).is_err());
 		assert!(c.radio_prompt(&text).is_err());

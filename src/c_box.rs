@@ -404,14 +404,13 @@ mod tests {
 		assert_eq!(*b, [0, u64::MAX, 0]);
 	}
 
-	/// Check if a boxed slice can be created, is correctly zero-initialized,
-	/// is correctly modifiable and rewrappable.
+	/// Check if a hash can be calculated and is identical to the hash of the inner value.
 	#[test]
 	fn test_hash() {
+		use std::borrow::Borrow;
 		use std::collections::hash_map::DefaultHasher;
 		use std::hash::{Hash, Hasher};
-		use std::borrow::Borrow;
-		
+
 		fn calc_hash<T: Hash>(t: &T) -> u64 {
 			let mut s = DefaultHasher::new();
 			t.hash(&mut s);
@@ -419,7 +418,7 @@ mod tests {
 		}
 
 		let b: CBox<()> = CBox::new(());
-		
+
 		assert_eq!(calc_hash(&()), calc_hash(&b));
 		assert_eq!(calc_hash::<()>(b.borrow()), calc_hash(&b));
 	}

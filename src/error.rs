@@ -341,16 +341,32 @@ mod tests {
 
 	#[test]
 	fn test_no_msg() {
-		let error = Error::from(ErrorCode::BUF_ERR);
+		let error = Error::from(ErrorCode::BAD_ITEM);
 		assert_eq!(
 			format!("{}", error),
-			format!("<{}>", (ErrorCode::BUF_ERR as i32))
+			format!("<{}>", (ErrorCode::BAD_ITEM as i32))
 		);
-		assert_eq!(
-			format!("{:?}", &error),
-			format!("{:?}", error.clone())
-		);
+		assert_eq!(format!("{:?}", &error), format!("{:?}", error.clone()));
 		assert!(error.message().is_none());
-		let _error: ErrorWith<()> = error.into();
+		let error: ErrorWith<()> = error.into();
+		assert_eq!(io::Error::from(error).kind(), io::ErrorKind::NotFound);
+	}
+
+	/// Check if a hash can be calculated and equality works
+	#[test]
+	fn test_traits() {
+		use std::collections::hash_map::DefaultHasher;
+		use std::hash::{Hash, Hasher};
+
+		fn calc_hash<T: Hash>(t: &T) -> u64 {
+			let mut s = DefaultHasher::new();
+			t.hash(&mut s);
+			s.finish()
+		}
+
+		let error = Error::from(ErrorCode::BUF_ERR);
+
+		assert_eq!(calc_hash(&error), calc_hash(&error.clone()));
+		assert_eq!(&error, &error.clone());
 	}
 }

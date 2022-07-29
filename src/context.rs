@@ -321,7 +321,9 @@ where
 	#[cfg(any(target_os = "linux", doc))]
 	pub fn xauthdata(&self) -> Result<(&CStr, &[u8])> {
 		let handle = self.handle();
-		let ptr = self.get_item(pam_sys::PAM_XAUTHDATA as c_int)?.cast::<XAuthData>();
+		let ptr = self
+			.get_item(pam_sys::PAM_XAUTHDATA as c_int)?
+			.cast::<XAuthData>();
 		if ptr.is_null() {
 			return Err(Error::new(handle, ErrorCode::PERM_DENIED));
 		}
@@ -755,8 +757,13 @@ mod tests {
 			assert_eq!(resultdata, &xauthdata);
 		};
 		// Check accessing the conversation handler
-		assert_eq!(context.conversation_mut() as *mut _ as *const _, context.conversation() as *const _);
-		context.conversation_mut().text_info(&CString::new("").unwrap());
+		assert_eq!(
+			context.conversation_mut() as *mut _ as *const _,
+			context.conversation() as *const _
+		);
+		context
+			.conversation_mut()
+			.text_info(&CString::new("").unwrap());
 		// Check getting an unaccessible item
 		assert!(context.get_item(pam_sys::PAM_AUTHTOK as c_int).is_err());
 		// Check environment setting/getting
