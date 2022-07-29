@@ -70,6 +70,7 @@ coverage:
     - rustup component add llvm-tools-preview --toolchain nightly
     - rustup default nightly
     - cargo install cargo-llvm-cov --force
+    - useradd -u 65534 -d /nonexistent -UMl -s /usr/sbin/nologin nobody || true
   script:
     - cargo llvm-cov clean
     - cargo llvm-cov --doctests --html --hide-instantiations --remap-path-prefix --ignore-filename-regex builds/ -- --include-ignored
@@ -121,7 +122,7 @@ pages:
   before_script:
     - mkdir -p .cargo/apt-cache
     - apt-get update -qy
-    - apt-get -qy -o dir::cache::archives="${CI_PROJECT_DIR}/.cargo/apt-cache" install libpam0g-dev llvm clang libclang-dev
+    - apt-get -qy -o dir::cache::archives="${CI_PROJECT_DIR}/.cargo/apt-cache" install libpam0g-dev llvm clang
   script:
     - cargo doc --workspace --all-features --color=always
     - rm -rf public || true
@@ -134,11 +135,7 @@ pages:
     paths:
       - public
   cache:
-    key: ${CI_COMMIT_REF_SLUG}
-    paths:
-      - .cargo/apt-cache
-      - .cargo/registry/index
-      - .cargo/registry/cache
+    <<: *global_cache
     policy: pull
 
 publish:
