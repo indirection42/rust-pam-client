@@ -774,6 +774,7 @@ mod tests {
 				assert_eq!(value.to_string_lossy(), "1");
 			}
 		}
+		assert!(format!("{:?}", &env.iter_tuples()).contains("EnvItem"));
 		for item in &env {
 			let string = item.to_string();
 			if string.starts_with("TEST=") {

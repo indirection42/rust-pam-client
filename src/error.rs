@@ -333,16 +333,19 @@ mod tests {
 		let context = Context::new("test", None, Conversation::default()).unwrap();
 		let error = Error::new(context.handle(), ErrorCode::CONV_ERR).into_with_payload("foo");
 		assert_eq!(error.payload(), Some(&"foo"));
+		assert!(error.message().is_some());
 		assert!(format!("{:?}", error).len() > 1);
 		let mut error = error.map(|_| usize::MIN);
 		assert_eq!(error.payload(), Some(&usize::MIN));
 		let _ = error.take_payload();
 		assert_eq!(error.take_payload(), None);
+		assert!(format!("{:?}", error).contains("None"));
 		let error = error.map(|_| usize::MIN);
 		assert_eq!(error.payload(), None);
 		let error = error.into_without_payload();
 		assert_eq!(error.payload(), None);
 		assert!(format!("{:?} {}", error, error).len() > 4);
+		assert_eq!(io::Error::from(error).kind(), io::ErrorKind::Other);
 	}
 
 	#[test]
@@ -351,6 +354,10 @@ mod tests {
 		assert_eq!(
 			format!("{}", error),
 			format!("<{}>", (ErrorCode::BUF_ERR as i32))
+		);
+		assert_eq!(
+			format!("{:?}", &error),
+			format!("{:?}", error.clone())
 		);
 		assert!(error.message().is_none());
 		let _error: ErrorWith<()> = error.into();
