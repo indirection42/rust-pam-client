@@ -14,6 +14,7 @@ use crate::ConversationHandler;
 use crate::{ExtResult, Flag, Result};
 
 use pam_sys::{pam_close_session, pam_setcred};
+use std::ffi::OsStr;
 use std::mem::drop;
 
 /// Token type to resume RAII handling of a session that was released with [`Session::leak()`].
@@ -118,7 +119,7 @@ where
 	/// See [`Context::getenv()`].
 	#[must_use]
 	#[rustversion::attr(since(1.48), doc(alias = "pam_getenv"))]
-	pub fn getenv<'b>(&'b self, name: &str) -> Option<&'b str> {
+	pub fn getenv(&self, name: impl AsRef<OsStr>) -> Option<&str> {
 		self.context.getenv(name)
 	}
 
@@ -126,7 +127,7 @@ where
 	///
 	/// See [`Context::putenv()`].
 	#[rustversion::attr(since(1.48), doc(alias = "pam_putenv"))]
-	pub fn putenv(&mut self, name_value: &str) -> Result<()> {
+	pub fn putenv(&mut self, name_value: impl AsRef<OsStr>) -> Result<()> {
 		self.context.putenv(name_value)
 	}
 

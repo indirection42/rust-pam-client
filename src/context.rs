@@ -25,8 +25,9 @@ use pam_sys::{
 	pam_getenv, pam_getenvlist, pam_open_session, pam_putenv, pam_set_item, pam_setcred, pam_start,
 };
 use std::cell::Cell;
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr, CString, OsStr};
 use std::mem::take;
+use std::os::unix::ffi::OsStrExt;
 use std::ptr::NonNull;
 use std::{ptr, slice};
 
@@ -385,8 +386,8 @@ where
 	/// item with key `name` and returns the value, if it exists.
 	#[must_use]
 	#[rustversion::attr(since(1.48), doc(alias = "pam_getenv"))]
-	pub fn getenv<'a>(&'a self, name: &str) -> Option<&'a str> {
-		let c_name = match CString::new(name) {
+	pub fn getenv(&self, name: impl AsRef<OsStr>) -> Option<&str> {
+		let c_name = match CString::new(name.as_ref().as_bytes()) {
 			Err(_) => return None,
 			Ok(s) => s,
 		};
@@ -403,8 +404,9 @@ where
 	///   it is overwritten.
 	/// - *NAME* – Delete a variable, if it exists.
 	#[rustversion::attr(since(1.48), doc(alias = "pam_putenv"))]
-	pub fn putenv(&mut self, name_value: &str) -> Result<()> {
-		let c_name_value = CString::new(name_value).map_err(|_| Error::from(ErrorCode::BUF_ERR))?;
+	pub fn putenv(&mut self, name_value: impl AsRef<OsStr>) -> Result<()> {
+		let c_name_value = CString::new(name_value.as_ref().as_bytes())
+			.map_err(|_| Error::from(ErrorCode::BUF_ERR))?;
 		self.wrap_pam_return(unsafe { pam_putenv(self.handle().into(), c_name_value.as_ptr()) })
 	}
 
