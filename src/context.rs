@@ -26,7 +26,7 @@ use pam_sys::{
 };
 use std::cell::Cell;
 use std::ffi::{CStr, CString, OsStr};
-use std::mem::take;
+use std::mem::ManuallyDrop;
 use std::os::unix::ffi::OsStrExt;
 use std::ptr::NonNull;
 use std::{ptr, slice};
@@ -115,13 +115,10 @@ struct XAuthData {
 /// Manages a PAM context holding the transaction state.
 ///
 /// See the [crate documentation][`crate`] for examples.
-pub struct Context<ConvT>
-where
-	ConvT: ConversationHandler,
-{
-	handle: Option<PamHandle>,
+pub struct Context<ConvT> {
+	handle: PamHandle,
 	// Needs to be boxed, as we give a long-living pointer to it to C code.
-	conversation: Box<ConvT>,
+	conversation: ManuallyDrop<Box<ConvT>>,
 	last_status: Cell<c_int>,
 }
 
@@ -192,8 +189,8 @@ where
 					.ok_or_else(|| Error::from(ErrorCode::ABORT))?;
 				boxed_conv.init(username);
 				Ok(Self {
-					handle: Some(handle),
-					conversation: boxed_conv,
+					handle,
+					conversation: ManuallyDrop::new(boxed_conv),
 					last_status: Cell::new(PAM_SUCCESS),
 				})
 			}
@@ -203,13 +200,217 @@ where
 		}
 	}
 
-	/// Internal: Gets the PAM handle.
+	/// Authenticates a user.
 	///
-	/// # Panics
-	/// Panics if there is no handle (e.g. the handle was removed with [`Option::take`]).
+	/// The conversation handler may be called to ask the user for their name
+	/// (especially if no initial username was provided), their password and
+	/// possibly other tokens if e.g. two-factor authentication is required.
+	/// Conversely the conversation handler may not be called if authentication
+	/// is handled by other means, e.g. a fingerprint scanner.
+	///
+	/// Relevant `flags` are [`Flag::NONE`], [`Flag::SILENT`] and
+	/// [`Flag::DISALLOW_NULL_AUTHTOK`] (don't authenticate empty
+	/// passwords).
+	///
+	/// # Errors
+	/// Expected error codes include:
+	/// - `ABORT` – Serious failure; the application should exit.
+	/// - `AUTH_ERR` – The user was not authenticated.
+	/// - `CRED_INSUFFICIENT` – The application does not have sufficient
+	///   credentials to authenticate the user.
+	/// - `AUTHINFO_UNAVAIL` – Could not retrieve authentication information
+	///   due to e.g. network failure.
+	/// - `MAXTRIES` – At least one module reached its retry limit. Do not
+	/// - try again.
+	/// - `USER_UNKNOWN` – User not known.
+	/// - `INCOMPLETE` – The conversation handler returned `CONV_AGAIN`. Call
+	///   again after the asynchronous conversation finished.
+	#[rustversion::attr(since(1.48), doc(alias = "pam_authenticate"))]
+	pub fn authenticate(&mut self, flags: Flag) -> Result<()> {
+		self.wrap_pam_return(unsafe { pam_authenticate(self.handle().into(), flags.bits()) })
+	}
+
+	/// Validates user account authorization.
+	///
+	/// Determines if the account is valid, not expired, and verifies other
+	/// access restrictions. Usually used directly after authentication.
+	/// The conversation handler may be called by some PAM module.
+	///
+	/// Relevant `flags` are [`Flag::NONE`], [`Flag::SILENT`] and
+	/// [`Flag::DISALLOW_NULL_AUTHTOK`] (demand password change on empty
+	/// passwords).
+	///
+	/// # Errors
+	/// Expected error codes include:
+	/// - `ACCT_EXPIRED` – Account has expired.
+	/// - `AUTH_ERR` – Authentication failure.
+	/// - `NEW_AUTHTOK_REQD` – Password has expired. Use [`chauthtok()`] to let
+	///   the user change their password or abort.
+	/// - `PERM_DENIED` – Permission denied
+	/// - `USER_UNKNOWN` – User not known
+	/// - `INCOMPLETE` – The conversation handler returned `CONV_AGAIN`. Call
+	///   again after the asynchronous conversation finished.
+	///
+	/// [`chauthtok()`]: `Self::chauthtok`
+	#[rustversion::attr(since(1.48), doc(alias = "pam_acct_mgmt"))]
+	pub fn acct_mgmt(&mut self, flags: Flag) -> Result<()> {
+		self.wrap_pam_return(unsafe { pam_acct_mgmt(self.handle().into(), flags.bits()) })
+	}
+
+	/// Fully reinitializes the user's credentials (if established).
+	///
+	/// Reinitializes credentials like Kerberos tokens for when a session
+	/// is already managed by another process. This is e.g. used in
+	/// lockscreen applications to refresh the credentials of the desktop
+	/// session.
+	///
+	/// Relevant `flags` are [`Flag::NONE`] and [`Flag::SILENT`].
+	///
+	/// # Errors
+	/// Expected error codes include:
+	/// - `BUF_ERR` – Memory allocation error
+	/// - `CRED_ERR` – Setting credentials failed
+	/// - `CRED_UNAVAIL` – Failed to retrieve credentials
+	/// - `SYSTEM_ERR` – Other system error
+	/// - `USER_UNKNOWN` – User not known
+	pub fn reinitialize_credentials(&mut self, flags: Flag) -> Result<()> {
+		self.wrap_pam_return(unsafe {
+			pam_setcred(
+				self.handle().into(),
+				(Flag::REINITIALIZE_CRED | flags).bits(),
+			)
+		})
+	}
+
+	/// Changes a users password.
+	///
+	/// The conversation handler will be used to request the new password
+	/// and might query for the old one.
+	///
+	/// Relevant `flags` are [`Flag::NONE`], [`Flag::SILENT`] and
+	/// [`Flag::CHANGE_EXPIRED_AUTHTOK`] (only initiate change for
+	/// expired passwords).
+	///
+	/// # Errors
+	/// Expected error codes include:
+	/// - `AUTHTOK_ERR` – Unable to obtain the new password
+	/// - `AUTHTOK_RECOVERY_ERR` – Unable to obtain the old password
+	/// - `AUTHTOK_LOCK_BUSY` – Authentication token is currently locked
+	/// - `AUTHTOK_DISABLE_AGING` – Password aging is disabled (password may
+	///   be unchangeable in at least one module)
+	/// - `PERM_DENIED` – Permission denied
+	/// - `TRY_AGAIN` – Not all modules were able to prepare an authentication
+	///   token update. Nothing was changed.
+	/// - `USER_UNKNOWN` – User not known
+	/// - `INCOMPLETE` – The conversation handler returned `CONV_AGAIN`. Call
+	///   again after the asynchronous conversation finished.
+	#[rustversion::attr(since(1.48), doc(alias = "pam_chauthtok"))]
+	pub fn chauthtok(&mut self, flags: Flag) -> Result<()> {
+		self.wrap_pam_return(unsafe { pam_chauthtok(self.handle().into(), flags.bits()) })
+	}
+
+	/// Sets up a user session.
+	///
+	/// Establishes user credentials and performs various tasks to prepare
+	/// a login session, may create the home directory on first login, mount
+	/// user-specific directories, log access times, etc. The application
+	/// must usually have sufficient privileges to perform this task (e.g.
+	/// have EUID 0). The returned [`Session`] object closes the session and
+	/// deletes the established credentials on drop.
+	///
+	/// The user should already be [authenticated] and [authorized] at this
+	/// point, but this isn't enforced or strictly neccessary if the user
+	/// was authenticated by other means. In that case the conversation
+	/// handler might be called by e.g. crypt-mount modules to get a password.
+	///
+	/// Relevant `flags` are [`Flag::NONE`] and [`Flag::SILENT`].
+	///
+	/// # Errors
+	/// Expected error codes include:
+	/// - `ABORT` – Serious failure; the application should exit
+	/// - `BUF_ERR` – Memory allocation error
+	/// - `SESSION_ERR` – Some session initialization failed
+	/// - `CRED_ERR` – Setting credentials failed
+	/// - `CRED_UNAVAIL` – Failed to retrieve credentials
+	/// - `SYSTEM_ERR` – Other system error
+	/// - `USER_UNKNOWN` – User not known
+	/// - `INCOMPLETE` – The conversation handler returned `CONV_AGAIN`. Call
+	///   again after the asynchronous conversation finished.
+	///
+	/// [authenticated]: `Self::authenticate()`
+	/// [authorized]: `Self::acct_mgmt()`
+	#[rustversion::attr(since(1.48), doc(alias = "pam_open_session"))]
+	pub fn open_session(&mut self, flags: Flag) -> Result<Session<ConvT>> {
+		let handle = self.handle().as_ptr();
+		self.wrap_pam_return(unsafe {
+			pam_setcred(handle, (Flag::ESTABLISH_CRED | flags).bits())
+		})?;
+
+		if let Err(e) = self.wrap_pam_return(unsafe { pam_open_session(handle, flags.bits()) }) {
+			let _ = self.wrap_pam_return(unsafe {
+				pam_setcred(handle, (Flag::DELETE_CRED | flags).bits())
+			});
+			return Err(e);
+		}
+
+		// Reinitialize credentials after session opening. With this we try
+		// to circumvent different assumptions of PAM modules about when
+		// `setcred` is called, as the documentations of different PAM
+		// implementations differ. (OpenSSH does something similar too).
+		if let Err(e) = self.wrap_pam_return(unsafe {
+			pam_setcred(handle, (Flag::REINITIALIZE_CRED | flags).bits())
+		}) {
+			let _ = self.wrap_pam_return(unsafe { pam_close_session(handle, flags.bits()) });
+			let _ = self.wrap_pam_return(unsafe {
+				pam_setcred(handle, (Flag::DELETE_CRED | flags).bits())
+			});
+			return Err(e);
+		}
+
+		Ok(Session::new(self, true))
+	}
+
+	/// Maintains user credentials but don't set up a full user session.
+	///
+	/// Establishes user credentials and returns a [`Session`] object that
+	/// deletes the credentials on drop. It doesn't open a PAM session.
+	///
+	/// The user should already be [authenticated] and [authorized] at this
+	/// point, but this isn't enforced or strictly neccessary.
+	///
+	/// Depending on the platform this use case may not be fully supported.
+	///
+	/// Relevant `flags` are [`Flag::NONE`] and [`Flag::SILENT`].
+	///
+	/// # Errors
+	/// Expected error codes include:
+	/// - `BUF_ERR` – Memory allocation error
+	/// - `CRED_ERR` – Setting credentials failed
+	/// - `CRED_UNAVAIL` – Failed to retrieve credentials
+	/// - `SYSTEM_ERR` – Other system error
+	/// - `USER_UNKNOWN` – User not known
+	///
+	/// [authenticated]: Self::authenticate()
+	/// [authorized]: Self::acct_mgmt()
+	pub fn open_pseudo_session(&mut self, flags: Flag) -> Result<Session<ConvT>> {
+		self.wrap_pam_return(unsafe {
+			pam_setcred(self.handle().into(), (Flag::ESTABLISH_CRED | flags).bits())
+		})?;
+
+		Ok(Session::new(self, false))
+	}
+
+	/// Resume a session from a [`SessionToken`].
+	pub fn unleak_session(&mut self, token: SessionToken) -> Session<ConvT> {
+		Session::new(self, matches!(token, SessionToken::FullSession))
+	}
+}
+
+impl<ConvT> Context<ConvT> {
+	/// Internal: Gets the PAM handle.
 	#[inline]
 	pub(crate) fn handle(&self) -> PamHandle {
-		self.handle.unwrap()
+		self.handle
 	}
 
 	/// Internal: Wraps a `ErrorCode` into a `Result` and sets `last_status`.
@@ -425,216 +626,6 @@ where
 		unsafe { EnvList::new(pam_getenvlist(self.handle().into()).cast()) }
 	}
 
-	/// Authenticates a user.
-	///
-	/// The conversation handler may be called to ask the user for their name
-	/// (especially if no initial username was provided), their password and
-	/// possibly other tokens if e.g. two-factor authentication is required.
-	/// Conversely the conversation handler may not be called if authentication
-	/// is handled by other means, e.g. a fingerprint scanner.
-	///
-	/// Relevant `flags` are [`Flag::NONE`], [`Flag::SILENT`] and
-	/// [`Flag::DISALLOW_NULL_AUTHTOK`] (don't authenticate empty
-	/// passwords).
-	///
-	/// # Errors
-	/// Expected error codes include:
-	/// - `ABORT` – Serious failure; the application should exit.
-	/// - `AUTH_ERR` – The user was not authenticated.
-	/// - `CRED_INSUFFICIENT` – The application does not have sufficient
-	///   credentials to authenticate the user.
-	/// - `AUTHINFO_UNAVAIL` – Could not retrieve authentication information
-	///   due to e.g. network failure.
-	/// - `MAXTRIES` – At least one module reached its retry limit. Do not
-	/// - try again.
-	/// - `USER_UNKNOWN` – User not known.
-	/// - `INCOMPLETE` – The conversation handler returned `CONV_AGAIN`. Call
-	///   again after the asynchronous conversation finished.
-	#[rustversion::attr(since(1.48), doc(alias = "pam_authenticate"))]
-	pub fn authenticate(&mut self, flags: Flag) -> Result<()> {
-		self.wrap_pam_return(unsafe { pam_authenticate(self.handle().into(), flags.bits()) })
-	}
-
-	/// Validates user account authorization.
-	///
-	/// Determines if the account is valid, not expired, and verifies other
-	/// access restrictions. Usually used directly after authentication.
-	/// The conversation handler may be called by some PAM module.
-	///
-	/// Relevant `flags` are [`Flag::NONE`], [`Flag::SILENT`] and
-	/// [`Flag::DISALLOW_NULL_AUTHTOK`] (demand password change on empty
-	/// passwords).
-	///
-	/// # Errors
-	/// Expected error codes include:
-	/// - `ACCT_EXPIRED` – Account has expired.
-	/// - `AUTH_ERR` – Authentication failure.
-	/// - `NEW_AUTHTOK_REQD` – Password has expired. Use [`chauthtok()`] to let
-	///   the user change their password or abort.
-	/// - `PERM_DENIED` – Permission denied
-	/// - `USER_UNKNOWN` – User not known
-	/// - `INCOMPLETE` – The conversation handler returned `CONV_AGAIN`. Call
-	///   again after the asynchronous conversation finished.
-	///
-	/// [`chauthtok()`]: `Self::chauthtok`
-	#[rustversion::attr(since(1.48), doc(alias = "pam_acct_mgmt"))]
-	pub fn acct_mgmt(&mut self, flags: Flag) -> Result<()> {
-		self.wrap_pam_return(unsafe { pam_acct_mgmt(self.handle().into(), flags.bits()) })
-	}
-
-	/// Fully reinitializes the user's credentials (if established).
-	///
-	/// Reinitializes credentials like Kerberos tokens for when a session
-	/// is already managed by another process. This is e.g. used in
-	/// lockscreen applications to refresh the credentials of the desktop
-	/// session.
-	///
-	/// Relevant `flags` are [`Flag::NONE`] and [`Flag::SILENT`].
-	///
-	/// # Errors
-	/// Expected error codes include:
-	/// - `BUF_ERR` – Memory allocation error
-	/// - `CRED_ERR` – Setting credentials failed
-	/// - `CRED_UNAVAIL` – Failed to retrieve credentials
-	/// - `SYSTEM_ERR` – Other system error
-	/// - `USER_UNKNOWN` – User not known
-	pub fn reinitialize_credentials(&mut self, flags: Flag) -> Result<()> {
-		self.wrap_pam_return(unsafe {
-			pam_setcred(
-				self.handle().into(),
-				(Flag::REINITIALIZE_CRED | flags).bits(),
-			)
-		})
-	}
-
-	/// Changes a users password.
-	///
-	/// The conversation handler will be used to request the new password
-	/// and might query for the old one.
-	///
-	/// Relevant `flags` are [`Flag::NONE`], [`Flag::SILENT`] and
-	/// [`Flag::CHANGE_EXPIRED_AUTHTOK`] (only initiate change for
-	/// expired passwords).
-	///
-	/// # Errors
-	/// Expected error codes include:
-	/// - `AUTHTOK_ERR` – Unable to obtain the new password
-	/// - `AUTHTOK_RECOVERY_ERR` – Unable to obtain the old password
-	/// - `AUTHTOK_LOCK_BUSY` – Authentication token is currently locked
-	/// - `AUTHTOK_DISABLE_AGING` – Password aging is disabled (password may
-	///   be unchangeable in at least one module)
-	/// - `PERM_DENIED` – Permission denied
-	/// - `TRY_AGAIN` – Not all modules were able to prepare an authentication
-	///   token update. Nothing was changed.
-	/// - `USER_UNKNOWN` – User not known
-	/// - `INCOMPLETE` – The conversation handler returned `CONV_AGAIN`. Call
-	///   again after the asynchronous conversation finished.
-	#[rustversion::attr(since(1.48), doc(alias = "pam_chauthtok"))]
-	pub fn chauthtok(&mut self, flags: Flag) -> Result<()> {
-		self.wrap_pam_return(unsafe { pam_chauthtok(self.handle().into(), flags.bits()) })
-	}
-
-	/// Sets up a user session.
-	///
-	/// Establishes user credentials and performs various tasks to prepare
-	/// a login session, may create the home directory on first login, mount
-	/// user-specific directories, log access times, etc. The application
-	/// must usually have sufficient privileges to perform this task (e.g.
-	/// have EUID 0). The returned [`Session`] object closes the session and
-	/// deletes the established credentials on drop.
-	///
-	/// The user should already be [authenticated] and [authorized] at this
-	/// point, but this isn't enforced or strictly neccessary if the user
-	/// was authenticated by other means. In that case the conversation
-	/// handler might be called by e.g. crypt-mount modules to get a password.
-	///
-	/// Relevant `flags` are [`Flag::NONE`] and [`Flag::SILENT`].
-	///
-	/// # Errors
-	/// Expected error codes include:
-	/// - `ABORT` – Serious failure; the application should exit
-	/// - `BUF_ERR` – Memory allocation error
-	/// - `SESSION_ERR` – Some session initialization failed
-	/// - `CRED_ERR` – Setting credentials failed
-	/// - `CRED_UNAVAIL` – Failed to retrieve credentials
-	/// - `SYSTEM_ERR` – Other system error
-	/// - `USER_UNKNOWN` – User not known
-	/// - `INCOMPLETE` – The conversation handler returned `CONV_AGAIN`. Call
-	///   again after the asynchronous conversation finished.
-	///
-	/// [authenticated]: `Self::authenticate()`
-	/// [authorized]: `Self::acct_mgmt()`
-	#[rustversion::attr(since(1.48), doc(alias = "pam_open_session"))]
-	pub fn open_session(&mut self, flags: Flag) -> Result<Session<ConvT>> {
-		let handle = self.handle().as_ptr();
-		self.wrap_pam_return(unsafe {
-			pam_setcred(handle, (Flag::ESTABLISH_CRED | flags).bits())
-		})?;
-
-		if let Err(e) = self.wrap_pam_return(unsafe { pam_open_session(handle, flags.bits()) }) {
-			let _ = self.wrap_pam_return(unsafe {
-				pam_setcred(handle, (Flag::DELETE_CRED | flags).bits())
-			});
-			return Err(e);
-		}
-
-		// Reinitialize credentials after session opening. With this we try
-		// to circumvent different assumptions of PAM modules about when
-		// `setcred` is called, as the documentations of different PAM
-		// implementations differ. (OpenSSH does something similar too).
-		if let Err(e) = self.wrap_pam_return(unsafe {
-			pam_setcred(handle, (Flag::REINITIALIZE_CRED | flags).bits())
-		}) {
-			let _ = self.wrap_pam_return(unsafe { pam_close_session(handle, flags.bits()) });
-			let _ = self.wrap_pam_return(unsafe {
-				pam_setcred(handle, (Flag::DELETE_CRED | flags).bits())
-			});
-			return Err(e);
-		}
-
-		Ok(Session::new(self, true))
-	}
-
-	/// Maintains user credentials but don't set up a full user session.
-	///
-	/// Establishes user credentials and returns a [`Session`] object that
-	/// deletes the credentials on drop. It doesn't open a PAM session.
-	///
-	/// The user should already be [authenticated] and [authorized] at this
-	/// point, but this isn't enforced or strictly neccessary.
-	///
-	/// Depending on the platform this use case may not be fully supported.
-	///
-	/// Relevant `flags` are [`Flag::NONE`] and [`Flag::SILENT`].
-	///
-	/// # Errors
-	/// Expected error codes include:
-	/// - `BUF_ERR` – Memory allocation error
-	/// - `CRED_ERR` – Setting credentials failed
-	/// - `CRED_UNAVAIL` – Failed to retrieve credentials
-	/// - `SYSTEM_ERR` – Other system error
-	/// - `USER_UNKNOWN` – User not known
-	///
-	/// [authenticated]: Self::authenticate()
-	/// [authorized]: Self::acct_mgmt()
-	pub fn open_pseudo_session(&mut self, flags: Flag) -> Result<Session<ConvT>> {
-		self.wrap_pam_return(unsafe {
-			pam_setcred(self.handle().into(), (Flag::ESTABLISH_CRED | flags).bits())
-		})?;
-
-		Ok(Session::new(self, false))
-	}
-
-	/// Resume a session from a [`SessionToken`].
-	pub fn unleak_session(&mut self, token: SessionToken) -> Session<ConvT> {
-		Session::new(self, matches!(token, SessionToken::FullSession))
-	}
-}
-
-impl<ConvT> Context<ConvT>
-where
-	ConvT: ConversationHandler + Default,
-{
 	/// Swap the conversation handler.
 	///
 	/// Consumes the context, returns the new context and the old conversation
@@ -684,37 +675,37 @@ where
 			Err(e.into_with_payload((self, new_handler)))
 		} else {
 			// Initialize handler
-			new_handler.init(username);
+			new_handler.init(username.as_deref());
+			// Prevent dropping of the old context
+			let mut old = ManuallyDrop::new(self);
 			// Create new context and return it
 			Ok((
 				Context::<T> {
-					handle: self.handle.take(),
-					conversation: new_handler,
-					last_status: Cell::new(self.last_status.replace(PAM_SUCCESS)),
+					handle: old.handle,
+					conversation: ManuallyDrop::new(new_handler),
+					last_status: Cell::new(old.last_status.replace(PAM_SUCCESS)),
 				},
-				take(&mut self.conversation),
+				// Safety: `old` is ManuallyDrop, so the Drop implementation which would
+				// drop `old.conversation` won't be called.
+				unsafe { ManuallyDrop::take(&mut old.conversation) },
 			))
 		}
 	}
 }
 
 /// Destructor ending the PAM transaction and releasing the PAM context
-impl<ConvT> Drop for Context<ConvT>
-where
-	ConvT: ConversationHandler,
-{
+impl<ConvT> Drop for Context<ConvT> {
 	#[rustversion::attr(since(1.48), doc(alias = "pam_end"))]
 	fn drop(&mut self) {
-		if let Some(handle) = self.handle {
-			unsafe { pam_end(handle.into(), self.last_status.get()) };
-		}
+		unsafe { pam_end(self.handle.into(), self.last_status.get()) };
+		unsafe { ManuallyDrop::drop(&mut self.conversation) }
 	}
 }
 
 // `Send` should be possible, as long as `ConvT` is `Send` too, as all memory
 // access is bound to an unique instance of `Context` (no copy/clone) and we
 // keep interior mutability bound to having a reference to the instance.
-unsafe impl<ConvT> Send for Context<ConvT> where ConvT: ConversationHandler + Send {}
+unsafe impl<ConvT> Send for Context<ConvT> where ConvT: Send {}
 
 #[cfg(test)]
 mod tests {
@@ -849,6 +840,30 @@ mod tests {
 		let (context, _) = context.replace_conversation(old_conv).unwrap();
 		// Check if username stays None after being set througout a replace.
 		assert!(context.user().is_err());
+	}
+
+	#[test]
+	fn test_dyn() {
+		let mut context = Context::new(
+			"test",
+			Some("user"),
+			Box::new(crate::conv_null::Conversation::new()) as Box<dyn ConversationHandler>,
+		)
+		.unwrap();
+		// Set username
+		context.set_user(Some("anybody")).unwrap();
+		// Replace conversation handler
+		let (context, _) = context
+			.replace_conversation(
+				Box::new(crate::conv_mock::Conversation::new()) as Box<dyn ConversationHandler>
+			)
+			.unwrap();
+
+		// Check if set username was propagated to the new handler
+		// Safety: we know the type from four lines above, so this unchecked downcast is sound.
+		let mock_handler: &crate::conv_mock::Conversation =
+			unsafe { &*(&**context.conversation() as *const _ as *const _) };
+		assert_eq!(mock_handler.username, "anybody");
 	}
 
 	/// Shallowly tests a full authentication + password change + session cycle.

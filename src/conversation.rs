@@ -30,7 +30,7 @@ pub trait ConversationHandler {
 	/// argument.
 	///
 	/// The default implementation does nothing.
-	fn init(&mut self, _default_user: Option<impl AsRef<str>>) {}
+	fn init(&mut self, _default_user: Option<&str>) {}
 
 	/// Obtains a string whilst echoing text (e.g. username)
 	///
@@ -94,3 +94,51 @@ pub trait ConversationHandler {
 		Err(ErrorCode::CONV_ERR)
 	}
 }
+
+macro_rules! impl_for_wrapper {
+	($type:ty) => {
+		impl ConversationHandler for $type {
+			#[inline]
+			fn init(&mut self, default_user: Option<&str>) {
+				(**self).init(default_user)
+			}
+
+			#[inline]
+			fn prompt_echo_on(&mut self, prompt: &CStr) -> Result<CString, ErrorCode> {
+				(**self).prompt_echo_on(prompt)
+			}
+
+			#[inline]
+			fn prompt_echo_off(&mut self, prompt: &CStr) -> Result<CString, ErrorCode> {
+				(**self).prompt_echo_off(prompt)
+			}
+
+			#[inline]
+			fn text_info(&mut self, msg: &CStr) {
+				(**self).text_info(msg)
+			}
+
+			#[inline]
+			fn error_msg(&mut self, msg: &CStr) {
+				(**self).error_msg(msg)
+			}
+
+			#[inline]
+			fn radio_prompt(&mut self, prompt: &CStr) -> Result<bool, ErrorCode> {
+				(**self).radio_prompt(prompt)
+			}
+
+			#[inline]
+			fn binary_prompt(
+				&mut self,
+				type_: u8,
+				data: &[u8],
+			) -> Result<(u8, Vec<u8>), ErrorCode> {
+				(**self).binary_prompt(type_, data)
+			}
+		}
+	};
+}
+impl_for_wrapper!(Box<dyn ConversationHandler>);
+impl_for_wrapper!(Box<dyn ConversationHandler + Send>);
+impl_for_wrapper!(Box<dyn ConversationHandler + Send + Sync>);

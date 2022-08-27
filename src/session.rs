@@ -30,10 +30,7 @@ pub enum SessionToken {
 
 /// An active PAM session or pseudo session
 #[must_use]
-pub struct Session<'a, ConvT>
-where
-	ConvT: ConversationHandler,
-{
+pub struct Session<'a, ConvT> {
 	context: &'a mut Context<ConvT>,
 	session_active: bool,
 	credentials_active: bool,
@@ -184,10 +181,7 @@ where
 }
 
 /// Destructor ending the PAM session and deleting established credentials
-impl<'a, ConvT> Drop for Session<'a, ConvT>
-where
-	ConvT: ConversationHandler,
-{
+impl<'a, ConvT> Drop for Session<'a, ConvT> {
 	fn drop(&mut self) {
 		let handle = self.context.handle().as_ptr();
 		if self.session_active {

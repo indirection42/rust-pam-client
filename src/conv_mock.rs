@@ -106,10 +106,10 @@ impl Default for Conversation {
 }
 
 impl ConversationHandler for Conversation {
-	fn init(&mut self, default_user: Option<impl AsRef<str>>) {
+	fn init(&mut self, default_user: Option<&str>) {
 		if let Some(user) = default_user {
 			if self.username.is_empty() {
-				self.username = user.as_ref().to_string();
+				self.username = user.to_string();
 			}
 		}
 	}
