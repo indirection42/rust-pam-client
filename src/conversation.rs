@@ -97,7 +97,10 @@ pub trait ConversationHandler {
 
 macro_rules! impl_for_wrapper {
 	($type:ty) => {
-		impl ConversationHandler for $type {
+		impl_for_wrapper!($type, <>);
+	};
+	($type:ty, $($params:tt)*) => {
+		impl $($params)* ConversationHandler for $type {
 			#[inline]
 			fn init(&mut self, default_user: Option<&str>) {
 				(**self).init(default_user)
@@ -139,6 +142,5 @@ macro_rules! impl_for_wrapper {
 		}
 	};
 }
-impl_for_wrapper!(Box<dyn ConversationHandler>);
-impl_for_wrapper!(Box<dyn ConversationHandler + Send>);
-impl_for_wrapper!(Box<dyn ConversationHandler + Send + Sync>);
+impl_for_wrapper!(&'a mut T, <'a, T: ConversationHandler + ?Sized>);
+impl_for_wrapper!(Box<T>, <T: ConversationHandler + ?Sized>);
