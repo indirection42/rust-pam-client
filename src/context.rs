@@ -10,7 +10,7 @@
 
 use crate::env_list::EnvList;
 use crate::error::{Error, ErrorCode};
-use crate::ffi::to_pam_conv;
+use crate::ffi::{from_pam_conv, into_pam_conv};
 use crate::session::{Session, SessionToken};
 use crate::{char_ptr_to_str, ConversationHandler};
 extern crate libc;
@@ -19,6 +19,7 @@ extern crate pam_sys;
 use crate::{ExtResult, Flag, Result, PAM_SUCCESS};
 
 use libc::{c_char, c_int, c_void};
+use pam_sys::pam_conv as PamConversation;
 use pam_sys::pam_handle_t as RawPamHandle;
 use pam_sys::{
 	pam_acct_mgmt, pam_authenticate, pam_chauthtok, pam_close_session, pam_end, pam_get_item,
@@ -26,6 +27,7 @@ use pam_sys::{
 };
 use std::cell::Cell;
 use std::ffi::{CStr, CString, OsStr};
+use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::os::unix::ffi::OsStrExt;
 use std::ptr::NonNull;
@@ -117,9 +119,8 @@ struct XAuthData {
 /// See the [crate documentation][`crate`] for examples.
 pub struct Context<ConvT> {
 	handle: PamHandle,
-	// Needs to be boxed, as we give a long-living pointer to it to C code.
-	conversation: ManuallyDrop<Box<ConvT>>,
 	last_status: Cell<c_int>,
+	_conversation: PhantomData<ConvT>,
 }
 
 impl<ConvT> Context<ConvT>
@@ -160,7 +161,7 @@ where
 	pub fn from_boxed_conv(
 		service: &str,
 		username: Option<&str>,
-		mut boxed_conv: Box<ConvT>,
+		boxed_conv: Box<ConvT>,
 	) -> Result<Self> {
 		let mut handle: *mut RawPamHandle = ptr::null_mut();
 
@@ -171,7 +172,7 @@ where
 		};
 
 		// Create callback struct for C code
-		let pam_conv = to_pam_conv(&mut boxed_conv);
+		let pam_conv = into_pam_conv(boxed_conv);
 
 		// Start the PAM context
 		match unsafe {
@@ -187,12 +188,14 @@ where
 				// Safety: The handle came from `pam_start` so it must be valid.
 				let handle = unsafe { PamHandle::new(handle) }
 					.ok_or_else(|| Error::from(ErrorCode::ABORT))?;
-				boxed_conv.init(username);
-				Ok(Self {
+				let mut result = Self {
 					handle,
-					conversation: ManuallyDrop::new(boxed_conv),
 					last_status: Cell::new(PAM_SUCCESS),
-				})
+					_conversation: PhantomData,
+				};
+				// Initialize the conversation handler
+				result.conversation_mut().init(username);
+				Ok(result)
 			}
 			code => Err(ErrorCode::from_repr(code)
 				.unwrap_or(ErrorCode::ABORT)
@@ -426,16 +429,6 @@ impl<ConvT> Context<ConvT> {
 		}
 	}
 
-	/// Returns a reference to the conversation handler.
-	pub fn conversation(&self) -> &ConvT {
-		&self.conversation
-	}
-
-	/// Returns a mutable reference to the conversation handler.
-	pub fn conversation_mut(&mut self) -> &mut ConvT {
-		&mut self.conversation
-	}
-
 	/// Returns raw PAM information.
 	///
 	/// If possible, use the convenience wrappers [`service()`][`Self::service()`],
@@ -474,6 +467,41 @@ impl<ConvT> Context<ConvT> {
 	#[rustversion::attr(since(1.48), doc(alias = "pam_set_item"))]
 	pub unsafe fn set_item(&mut self, item_type: c_int, value: *const c_void) -> Result<()> {
 		self.wrap_pam_return(pam_set_item(self.handle().into(), item_type, &*value))
+	}
+
+	/// Returns a pointer to the raw conversation handler
+	///
+	/// # Panics
+	/// May panic if the type of the handler isn't `ConvT` or if somehow
+	/// extracting the handler from the PAM handle fails.
+	#[inline]
+	fn conversation_raw(&self) -> *mut ConvT {
+		let ptr = self
+			.get_item(pam_sys::PAM_CONV as c_int)
+			.expect("Extracting the conversation handler should never fail")
+			.cast::<PamConversation>();
+		unsafe {
+			from_pam_conv(
+				ptr.as_ref()
+					.expect("Invalid state: conversation handler should never be null"),
+			)
+		}
+	}
+
+	/// Returns a reference to the conversation handler.
+	pub fn conversation(&self) -> &ConvT {
+		let ptr: *const ConvT = self.conversation_raw();
+		// Safety: the conversation handler is only set by `from_boxed_conv()` or `replace_handler()`
+		// and these maintain that the installed handler is valid and of the correct type.
+		unsafe { &*ptr }
+	}
+
+	/// Returns a mutable reference to the conversation handler.
+	pub fn conversation_mut(&mut self) -> &mut ConvT {
+		let ptr = self.conversation_raw();
+		// Safety: the conversation handler is only set by `from_boxed_conv()` or `replace_handler()`
+		// and these maintain that the installed handler is valid and of the correct type.
+		unsafe { &mut *ptr }
 	}
 
 	impl_pam_str_item!(
@@ -652,7 +680,7 @@ impl<ConvT> Context<ConvT> {
 	/// See [`replace_conversation()`][`Self::replace_conversation()`].
 	pub fn replace_conversation_boxed<T: ConversationHandler>(
 		mut self,
-		mut new_handler: Box<T>,
+		new_handler: Box<T>,
 	) -> ExtResult<(Context<T>, Box<ConvT>), (Self, Box<T>)> {
 		// Get current username for handler initialization
 		let username = match self.user() {
@@ -664,31 +692,41 @@ impl<ConvT> Context<ConvT> {
 				None
 			}
 		};
-		// Create callback struct for C code
-		let pam_conv = to_pam_conv(&mut new_handler);
+		// Get pointer to old handler
+		let old_handler_ptr = self.conversation_raw();
+
+		// Swap handler
+		let pam_conv = into_pam_conv(new_handler);
 		if let Err(e) = unsafe {
 			self.set_item(
 				pam_sys::PAM_CONV as c_int,
 				&pam_conv as *const _ as *const _,
 			)
 		} {
+			let new_handler = unsafe { Box::from_raw(from_pam_conv(&pam_conv)) };
 			Err(e.into_with_payload((self, new_handler)))
 		} else {
-			// Initialize handler
-			new_handler.init(username.as_deref());
 			// Prevent dropping of the old context
-			let mut old = ManuallyDrop::new(self);
-			// Create new context and return it
-			Ok((
-				Context::<T> {
-					handle: old.handle,
-					conversation: ManuallyDrop::new(new_handler),
-					last_status: Cell::new(old.last_status.replace(PAM_SUCCESS)),
-				},
-				// Safety: `old` is ManuallyDrop, so the Drop implementation which would
-				// drop `old.conversation` won't be called.
-				unsafe { ManuallyDrop::take(&mut old.conversation) },
-			))
+			let old = ManuallyDrop::new(self);
+
+			// Reconstruct old handler from saved pointer
+			// Safety: The handler was replaced in the context, so there
+			// is no other way to access the old handler anymore and
+			// the pointer was originally constructed with `Box::into_raw()`.
+			let old_handler = unsafe { Box::from_raw(old_handler_ptr) };
+
+			// Create new context
+			let mut context = Context::<T> {
+				handle: old.handle,
+				last_status: Cell::new(old.last_status.replace(PAM_SUCCESS)),
+				_conversation: PhantomData,
+			};
+
+			// Initialize handler
+			context.conversation_mut().init(username.as_deref());
+
+			// Return context and old handler
+			Ok((context, old_handler))
 		}
 	}
 }
@@ -697,8 +735,9 @@ impl<ConvT> Context<ConvT> {
 impl<ConvT> Drop for Context<ConvT> {
 	#[rustversion::attr(since(1.48), doc(alias = "pam_end"))]
 	fn drop(&mut self) {
+		let conv = self.conversation_raw();
 		unsafe { pam_end(self.handle.into(), self.last_status.get()) };
-		unsafe { ManuallyDrop::drop(&mut self.conversation) }
+		drop(unsafe { Box::from_raw(conv) });
 	}
 }
 

@@ -23,12 +23,26 @@ use std::mem::size_of;
 use std::slice;
 
 /// Wraps `callback` along with [`pam_converse<T>`] for handing to libpam.
-#[allow(clippy::borrowed_box)]
-pub(crate) fn to_pam_conv<T: ConversationHandler>(callback: &mut Box<T>) -> PamConversation {
+pub(crate) fn into_pam_conv<T: ConversationHandler>(callback: Box<T>) -> PamConversation {
 	PamConversation {
 		conv: Some(pam_converse::<T>),
-		appdata_ptr: ((&mut **callback) as *mut T).cast(),
+		appdata_ptr: Box::into_raw(callback).cast(),
 	}
+}
+
+/// Extracts the pointer to the conversation handler of type `T`.
+///
+/// Performs the reverse of [`into_pam_conv()`] (except for not rebuilding a `Box`).
+///
+/// There is no check that `T` is the correct type. Unsafe code dereferencing
+/// the returned pointer must make sure that the types match.
+///
+/// # Panics
+/// Panics on null pointers in the `pam_conv` structure.
+pub(crate) fn from_pam_conv<T>(conv: &PamConversation) -> *mut T {
+	assert!(conv.conv.is_some());
+	assert!(!conv.appdata_ptr.is_null());
+	conv.appdata_ptr.cast()
 }
 
 /// Maps `prompt_*` success results to `Option<CString>`.
@@ -36,6 +50,7 @@ pub(crate) fn to_pam_conv<T: ConversationHandler>(callback: &mut Box<T>) -> PamC
 /// Might get more complex in case we change the function signatures in the
 /// future.
 #[allow(clippy::unnecessary_wraps)]
+#[inline]
 const fn map_conv_string(input: CString) -> Option<CString> {
 	Some(input)
 }
@@ -159,7 +174,7 @@ pub(crate) unsafe extern "C" fn pam_converse<T: ConversationHandler>(
 	}
 
 	// Extract conversation handler from `appdata_ptr`.
-	// This is sound, as we did the reverse in `to_pam_conv`.
+	// This is sound, as we did the reverse in `into_pam_conv`.
 	let handler = &mut *(appdata_ptr.cast::<T>());
 
 	// Prepare response buffer
@@ -257,8 +272,7 @@ mod tests {
 	/// Check edge cases for invalid parameters to `pam_conv`
 	#[test]
 	fn test_edge_cases() {
-		let mut handler = make_handler();
-		let pam_conv = to_pam_conv(&mut handler);
+		let pam_conv = into_pam_conv(make_handler());
 		let c_callback = pam_conv.conv.unwrap();
 		let appdata = pam_conv.appdata_ptr;
 
@@ -317,6 +331,7 @@ mod tests {
 		);
 
 		// There should be exactly zero message in the log
+		let handler: &Conversation = unsafe { &*from_pam_conv(&pam_conv) };
 		assert_eq!(
 			handler.log.len(),
 			0,
@@ -330,8 +345,7 @@ mod tests {
 	/// case defined.
 	#[test]
 	fn test_zero_num() {
-		let mut handler = make_handler();
-		let pam_conv = to_pam_conv(&mut handler);
+		let pam_conv = into_pam_conv(make_handler());
 		let c_callback = pam_conv.conv.unwrap();
 		let appdata = pam_conv.appdata_ptr;
 
@@ -358,6 +372,7 @@ mod tests {
 		);
 
 		// There should be exactly zero message in the log
+		let handler: &Conversation = unsafe { &*from_pam_conv(&pam_conv) };
 		assert_eq!(
 			handler.log.len(),
 			0,
@@ -367,8 +382,7 @@ mod tests {
 
 	/// Check if `pam_conv` correctly answers a prompt
 	fn test_prompt(style: c_int, prompt: &str, expected: &str) {
-		let mut handler = make_handler();
-		let pam_conv = to_pam_conv(&mut handler);
+		let pam_conv = into_pam_conv(make_handler());
 		let c_callback = pam_conv.conv.unwrap();
 		let appdata = pam_conv.appdata_ptr;
 
@@ -420,6 +434,7 @@ mod tests {
 		}
 
 		// There should be exactly zero message in the log
+		let handler: &Conversation = unsafe { &*from_pam_conv(&pam_conv) };
 		assert_eq!(
 			handler.log.len(),
 			0,
@@ -430,8 +445,7 @@ mod tests {
 	/// Check if `pam_conv` correctly handles an error from the conversation handler
 	#[test]
 	fn test_prompt_err() {
-		let mut handler = Box::new(NullConversation::new());
-		let pam_conv = to_pam_conv(&mut handler);
+		let pam_conv = into_pam_conv(Box::new(NullConversation::new()));
 		let c_callback = pam_conv.conv.unwrap();
 		let appdata = pam_conv.appdata_ptr;
 
@@ -485,8 +499,7 @@ mod tests {
 
 	/// Check if `pam_conv` correctly handles a info/error message
 	fn test_output_msg(style: c_int, text: Option<&str>) -> LogEntry {
-		let mut handler = make_handler();
-		let pam_conv = to_pam_conv(&mut handler);
+		let pam_conv = into_pam_conv(make_handler());
 		let c_callback = pam_conv.conv.unwrap();
 		let appdata = pam_conv.appdata_ptr;
 
@@ -537,6 +550,7 @@ mod tests {
 			free(responses as *mut _);
 		}
 
+		let handler: &mut Conversation = unsafe { &mut *from_pam_conv(&pam_conv) };
 		// There should be exactly one message in the log
 		assert_eq!(
 			handler.log.len(),
@@ -609,8 +623,7 @@ mod tests {
 	#[test]
 	#[cfg(target_os = "linux")]
 	fn test_binary() {
-		let mut handler = make_handler();
-		let pam_conv = to_pam_conv(&mut handler);
+		let pam_conv = into_pam_conv(make_handler());
 		let c_callback = pam_conv.conv.unwrap();
 		let appdata = pam_conv.appdata_ptr;
 
