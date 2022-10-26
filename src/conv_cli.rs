@@ -141,6 +141,7 @@ mod tests {
 	#[test]
 	fn test_output() {
 		let mut c = Conversation::default();
+		let _ = c.clone();
 		c.set_info_prefix("INFO: ");
 		c.set_error_prefix("ERROR: ");
 		assert_eq!(c.info_prefix(), "INFO: ");

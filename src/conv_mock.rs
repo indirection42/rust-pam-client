@@ -157,4 +157,22 @@ mod tests {
 		assert_eq!(v.len(), 1);
 		assert!(format!("{:?}", &c).contains("test"));
 	}
+
+	#[test]
+	fn test_boxed() {
+		let text = CString::new("test").unwrap();
+		let mut c = Box::new(Conversation::default());
+		assert!(c.prompt_echo_on(&text).is_ok());
+		assert!(c.prompt_echo_off(&text).is_ok());
+		assert!(c.radio_prompt(&text).ok() == Some(false));
+		assert!(c.binary_prompt(0, &[]).is_err());
+		c.text_info(&text);
+		c.error_msg(&text);
+		assert_eq!(c.log.len(), 2);
+		let v: std::vec::Vec<&CString> = c.errors().collect();
+		assert_eq!(v.len(), 1);
+		let v: std::vec::Vec<&CString> = c.infos().collect();
+		assert_eq!(v.len(), 1);
+		assert!(format!("{:?}", &c).contains("test"));
+	}
 }

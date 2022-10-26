@@ -882,6 +882,36 @@ mod tests {
 	}
 
 	#[test]
+	fn test_dyn_ref() {
+		let mut handler_a = crate::conv_null::Conversation::new();
+		let mut handler_b = crate::conv_mock::Conversation::new();
+
+		let mut context = Context::new(
+			"test",
+			Some("user"),
+			&mut handler_a as &mut (dyn ConversationHandler),
+		)
+		.unwrap();
+		// Set username
+		context.set_user(Some("anybody")).unwrap();
+		// Replace conversation handler and drop reference to `handler_a`
+		let (context, _) = context
+			.replace_conversation(
+				&mut handler_b as &mut (dyn ConversationHandler)
+			)
+			.unwrap();
+
+		// Assert that handler_a is accessible again
+		drop(handler_a);
+		
+		// drop context
+		drop(context);
+
+		// Check if set username was propagated to `handler_b`
+		assert_eq!(handler_b.username, "anybody");
+	}
+
+	#[test]
 	fn test_dyn() {
 		let mut context = Context::new(
 			"test",
