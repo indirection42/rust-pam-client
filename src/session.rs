@@ -13,7 +13,6 @@ use crate::Context;
 use crate::ConversationHandler;
 use crate::{ExtResult, Flag, Result};
 
-use pam_sys::{pam_close_session, pam_setcred};
 use std::ffi::OsStr;
 use std::mem::drop;
 
@@ -66,7 +65,7 @@ where
 	/// - `ReturnCode::USER_UNKNOWN`: User not known
 	pub fn refresh_credentials(&mut self, flags: Flag) -> Result<()> {
 		self.context.wrap_pam_return(unsafe {
-			pam_setcred(
+			self.context.pam_lib.pam_setcred(
 				self.context.handle().into(),
 				(Flag::REFRESH_CRED | flags).bits(),
 			)
@@ -80,7 +79,7 @@ where
 	/// See [`Context::reinitialize_credentials()`] for more information.
 	pub fn reinitialize_credentials(&mut self, flags: Flag) -> Result<()> {
 		self.context.wrap_pam_return(unsafe {
-			pam_setcred(
+			self.context.pam_lib.pam_setcred(
 				self.context.handle().into(),
 				(Flag::REINITIALIZE_CRED | flags).bits(),
 			)
@@ -163,14 +162,18 @@ where
 	pub fn close(mut self, flags: Flag) -> ExtResult<(), Self> {
 		let handle = self.context.handle().as_ptr();
 		if self.session_active {
-			let status = unsafe { pam_close_session(handle, flags.bits()) };
+			let status = unsafe { self.context.pam_lib.pam_close_session(handle, flags.bits()) };
 			if let Err(e) = self.context.wrap_pam_return(status) {
 				return Err(e.into_with_payload(self));
 			}
 			self.session_active = false;
 		}
 		if self.credentials_active {
-			let status = unsafe { pam_setcred(handle, (Flag::DELETE_CRED | flags).bits()) };
+			let status = unsafe {
+				self.context
+					.pam_lib
+					.pam_setcred(handle, (Flag::DELETE_CRED | flags).bits())
+			};
 			if let Err(e) = self.context.wrap_pam_return(status) {
 				return Err(e.into_with_payload(self));
 			}
@@ -185,12 +188,20 @@ impl<'a, ConvT> Drop for Session<'a, ConvT> {
 	fn drop(&mut self) {
 		let handle = self.context.handle().as_ptr();
 		if self.session_active {
-			let status = unsafe { pam_close_session(handle, Flag::NONE.bits()) };
+			let status = unsafe {
+				self.context
+					.pam_lib
+					.pam_close_session(handle, Flag::NONE.bits())
+			};
 			self.session_active = false;
 			drop(self.context.wrap_pam_return(status));
 		}
 		if self.credentials_active {
-			let status = unsafe { pam_setcred(handle, (Flag::DELETE_CRED | Flag::SILENT).bits()) };
+			let status = unsafe {
+				self.context
+					.pam_lib
+					.pam_setcred(handle, (Flag::DELETE_CRED | Flag::SILENT).bits())
+			};
 			self.credentials_active = false;
 			drop(self.context.wrap_pam_return(status));
 		}

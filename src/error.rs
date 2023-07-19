@@ -9,10 +9,9 @@
  ***********************************************************************/
 
 use crate::char_ptr_to_str;
-use crate::context::PamHandle;
+use crate::context::{PamHandle, PAM_LIB};
 #[doc(no_inline)]
 pub use crate::ErrorCode;
-use pam_sys::pam_strerror;
 
 use std::any::type_name;
 use std::cmp::{Eq, PartialEq};
@@ -100,9 +99,17 @@ impl<T> ErrorWith<T> {
 		code: ErrorCode,
 		payload: Option<T>,
 	) -> ErrorWith<T> {
+		if PAM_LIB.as_ref().is_none() {
+			return Self {
+				code: ErrorCode::OPEN_ERR,
+				msg: "Failed to load dynamic lib libpam.so".to_string(),
+				payload: None,
+			};
+		}
+		let pam_lib = PAM_LIB.as_ref().unwrap();
 		Self {
 			code,
-			msg: char_ptr_to_str(unsafe { pam_strerror(handle.into(), code.repr()) })
+			msg: char_ptr_to_str(unsafe { pam_lib.pam_strerror(handle.into(), code.repr()) })
 				.unwrap_or("")
 				.into(),
 			payload,

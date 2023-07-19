@@ -18,13 +18,11 @@ extern crate pam_sys;
 
 use crate::{ExtResult, Flag, Result, PAM_SUCCESS};
 
+use lazy_static::lazy_static;
 use libc::{c_char, c_int, c_void};
+use pam_sys::pam as PamLib;
 use pam_sys::pam_conv as PamConversation;
 use pam_sys::pam_handle_t as RawPamHandle;
-use pam_sys::{
-	pam_acct_mgmt, pam_authenticate, pam_chauthtok, pam_close_session, pam_end, pam_get_item,
-	pam_getenv, pam_getenvlist, pam_open_session, pam_putenv, pam_set_item, pam_setcred, pam_start,
-};
 use std::cell::Cell;
 use std::ffi::{CStr, CString, OsStr};
 use std::marker::PhantomData;
@@ -33,6 +31,10 @@ use std::os::unix::ffi::OsStrExt;
 use std::ptr::NonNull;
 use std::{ptr, slice};
 
+lazy_static! {
+	pub static ref PAM_LIB: Option<PamLib> = unsafe { PamLib::new("libpam.so.0").ok() };
+}
+
 /// Internal: Builds getters/setters for string-typed PAM items.
 macro_rules! impl_pam_str_item {
 	($name:ident, $set_name:ident, $item_type:expr$(, $doc:literal$(, $extdoc:literal)?)?$(,)?) => {
@@ -40,7 +42,7 @@ macro_rules! impl_pam_str_item {
 		pub fn $name(&self) -> Result<String> {
 			let ptr = self.get_item($item_type as c_int)?;
 			if ptr.is_null() {
-				return Err(Error::new(self.handle(), ErrorCode::PERM_DENIED));
+				return Err(Error::new(self.handle(), ErrorCode::PERM_DENIED)).map_err(Into::into);
 			}
 			let string = unsafe { CStr::from_ptr(ptr.cast()) }.to_string_lossy().into_owned();
 			return Ok(string);
@@ -118,6 +120,7 @@ struct XAuthData {
 ///
 /// See the [crate documentation][`crate`] for examples.
 pub struct Context<ConvT> {
+	pub pam_lib: &'static PamLib,
 	handle: PamHandle,
 	last_status: Cell<c_int>,
 	_conversation: PhantomData<ConvT>,
@@ -163,6 +166,7 @@ where
 		username: Option<&str>,
 		boxed_conv: Box<ConvT>,
 	) -> Result<Self> {
+		let pam_lib = PAM_LIB.as_ref().ok_or(Error::from(ErrorCode::OPEN_ERR))?;
 		let mut handle: *mut RawPamHandle = ptr::null_mut();
 
 		let c_service = CString::new(service).map_err(|_| Error::from(ErrorCode::BUF_ERR))?;
@@ -176,7 +180,7 @@ where
 
 		// Start the PAM context
 		match unsafe {
-			pam_start(
+			pam_lib.pam_start(
 				c_service.as_ptr(),
 				c_username.as_ref().map_or(ptr::null(), |s| s.as_ptr()),
 				&pam_conv,
@@ -189,6 +193,7 @@ where
 				let handle = unsafe { PamHandle::new(handle) }
 					.ok_or_else(|| Error::from(ErrorCode::ABORT))?;
 				let mut result = Self {
+					pam_lib,
 					handle,
 					last_status: Cell::new(PAM_SUCCESS),
 					_conversation: PhantomData,
@@ -230,7 +235,10 @@ where
 	///   again after the asynchronous conversation finished.
 	#[rustversion::attr(since(1.48), doc(alias = "pam_authenticate"))]
 	pub fn authenticate(&mut self, flags: Flag) -> Result<()> {
-		self.wrap_pam_return(unsafe { pam_authenticate(self.handle().into(), flags.bits()) })
+		self.wrap_pam_return(unsafe {
+			self.pam_lib
+				.pam_authenticate(self.handle().into(), flags.bits())
+		})
 	}
 
 	/// Validates user account authorization.
@@ -257,7 +265,10 @@ where
 	/// [`chauthtok()`]: `Self::chauthtok`
 	#[rustversion::attr(since(1.48), doc(alias = "pam_acct_mgmt"))]
 	pub fn acct_mgmt(&mut self, flags: Flag) -> Result<()> {
-		self.wrap_pam_return(unsafe { pam_acct_mgmt(self.handle().into(), flags.bits()) })
+		self.wrap_pam_return(unsafe {
+			self.pam_lib
+				.pam_acct_mgmt(self.handle().into(), flags.bits())
+		})
 	}
 
 	/// Fully reinitializes the user's credentials (if established).
@@ -278,7 +289,7 @@ where
 	/// - `USER_UNKNOWN` – User not known
 	pub fn reinitialize_credentials(&mut self, flags: Flag) -> Result<()> {
 		self.wrap_pam_return(unsafe {
-			pam_setcred(
+			self.pam_lib.pam_setcred(
 				self.handle().into(),
 				(Flag::REINITIALIZE_CRED | flags).bits(),
 			)
@@ -309,7 +320,10 @@ where
 	///   again after the asynchronous conversation finished.
 	#[rustversion::attr(since(1.48), doc(alias = "pam_chauthtok"))]
 	pub fn chauthtok(&mut self, flags: Flag) -> Result<()> {
-		self.wrap_pam_return(unsafe { pam_chauthtok(self.handle().into(), flags.bits()) })
+		self.wrap_pam_return(unsafe {
+			self.pam_lib
+				.pam_chauthtok(self.handle().into(), flags.bits())
+		})
 	}
 
 	/// Sets up a user session.
@@ -346,12 +360,16 @@ where
 	pub fn open_session(&mut self, flags: Flag) -> Result<Session<ConvT>> {
 		let handle = self.handle().as_ptr();
 		self.wrap_pam_return(unsafe {
-			pam_setcred(handle, (Flag::ESTABLISH_CRED | flags).bits())
+			self.pam_lib
+				.pam_setcred(handle, (Flag::ESTABLISH_CRED | flags).bits())
 		})?;
 
-		if let Err(e) = self.wrap_pam_return(unsafe { pam_open_session(handle, flags.bits()) }) {
+		if let Err(e) =
+			self.wrap_pam_return(unsafe { self.pam_lib.pam_open_session(handle, flags.bits()) })
+		{
 			let _ = self.wrap_pam_return(unsafe {
-				pam_setcred(handle, (Flag::DELETE_CRED | flags).bits())
+				self.pam_lib
+					.pam_setcred(handle, (Flag::DELETE_CRED | flags).bits())
 			});
 			return Err(e);
 		}
@@ -361,11 +379,14 @@ where
 		// `setcred` is called, as the documentations of different PAM
 		// implementations differ. (OpenSSH does something similar too).
 		if let Err(e) = self.wrap_pam_return(unsafe {
-			pam_setcred(handle, (Flag::REINITIALIZE_CRED | flags).bits())
+			self.pam_lib
+				.pam_setcred(handle, (Flag::REINITIALIZE_CRED | flags).bits())
 		}) {
-			let _ = self.wrap_pam_return(unsafe { pam_close_session(handle, flags.bits()) });
+			let _ = self
+				.wrap_pam_return(unsafe { self.pam_lib.pam_close_session(handle, flags.bits()) });
 			let _ = self.wrap_pam_return(unsafe {
-				pam_setcred(handle, (Flag::DELETE_CRED | flags).bits())
+				self.pam_lib
+					.pam_setcred(handle, (Flag::DELETE_CRED | flags).bits())
 			});
 			return Err(e);
 		}
@@ -397,7 +418,8 @@ where
 	/// [authorized]: Self::acct_mgmt()
 	pub fn open_pseudo_session(&mut self, flags: Flag) -> Result<Session<ConvT>> {
 		self.wrap_pam_return(unsafe {
-			pam_setcred(self.handle().into(), (Flag::ESTABLISH_CRED | flags).bits())
+			self.pam_lib
+				.pam_setcred(self.handle().into(), (Flag::ESTABLISH_CRED | flags).bits())
 		})?;
 
 		Ok(Session::new(self, false))
@@ -443,7 +465,8 @@ impl<ConvT> Context<ConvT> {
 	pub fn get_item(&self, item_type: c_int) -> Result<*const c_void> {
 		let mut result: *const c_void = ptr::null();
 		self.wrap_pam_return(unsafe {
-			pam_get_item(self.handle().into(), item_type, &mut result)
+			self.pam_lib
+				.pam_get_item(self.handle().into(), item_type, &mut result)
 		})?;
 		Ok(result)
 	}
@@ -466,7 +489,10 @@ impl<ConvT> Context<ConvT> {
 	/// `PAM_XAUTHDATA`.
 	#[rustversion::attr(since(1.48), doc(alias = "pam_set_item"))]
 	pub unsafe fn set_item(&mut self, item_type: c_int, value: *const c_void) -> Result<()> {
-		self.wrap_pam_return(pam_set_item(self.handle().into(), item_type, &*value))
+		self.wrap_pam_return(
+			self.pam_lib
+				.pam_set_item(self.handle().into(), item_type, &*value),
+		)
 	}
 
 	/// Returns a pointer to the raw conversation handler
@@ -620,7 +646,10 @@ impl<ConvT> Context<ConvT> {
 			Err(_) => return None,
 			Ok(s) => s,
 		};
-		char_ptr_to_str(unsafe { pam_getenv(self.handle().into(), c_name.as_ptr()) })
+		char_ptr_to_str(unsafe {
+			self.pam_lib
+				.pam_getenv(self.handle().into(), c_name.as_ptr())
+		})
 	}
 
 	/// Sets or unsets a PAM environment variable.
@@ -636,7 +665,10 @@ impl<ConvT> Context<ConvT> {
 	pub fn putenv(&mut self, name_value: impl AsRef<OsStr>) -> Result<()> {
 		let c_name_value = CString::new(name_value.as_ref().as_bytes())
 			.map_err(|_| Error::from(ErrorCode::BUF_ERR))?;
-		self.wrap_pam_return(unsafe { pam_putenv(self.handle().into(), c_name_value.as_ptr()) })
+		self.wrap_pam_return(unsafe {
+			self.pam_lib
+				.pam_putenv(self.handle().into(), c_name_value.as_ptr())
+		})
 	}
 
 	/// Returns a copy of the PAM environment in this context.
@@ -651,7 +683,7 @@ impl<ConvT> Context<ConvT> {
 	#[must_use]
 	#[rustversion::attr(since(1.48), doc(alias = "pam_getenvlist"))]
 	pub fn envlist(&self) -> EnvList {
-		unsafe { EnvList::new(pam_getenvlist(self.handle().into()).cast()) }
+		unsafe { EnvList::new(self.pam_lib.pam_getenvlist(self.handle().into()).cast()) }
 	}
 
 	/// Swap the conversation handler.
@@ -717,6 +749,7 @@ impl<ConvT> Context<ConvT> {
 
 			// Create new context
 			let mut context = Context::<T> {
+				pam_lib: old.pam_lib,
 				handle: old.handle,
 				last_status: Cell::new(old.last_status.replace(PAM_SUCCESS)),
 				_conversation: PhantomData,
@@ -736,7 +769,10 @@ impl<ConvT> Drop for Context<ConvT> {
 	#[rustversion::attr(since(1.48), doc(alias = "pam_end"))]
 	fn drop(&mut self) {
 		let conv = self.conversation_raw();
-		unsafe { pam_end(self.handle.into(), self.last_status.get()) };
+		unsafe {
+			self.pam_lib
+				.pam_end(self.handle.into(), self.last_status.get())
+		};
 		drop(unsafe { Box::from_raw(conv) });
 	}
 }
@@ -896,14 +932,12 @@ mod tests {
 		context.set_user(Some("anybody")).unwrap();
 		// Replace conversation handler and drop reference to `handler_a`
 		let (context, _) = context
-			.replace_conversation(
-				&mut handler_b as &mut (dyn ConversationHandler)
-			)
+			.replace_conversation(&mut handler_b as &mut (dyn ConversationHandler))
 			.unwrap();
 
 		// Assert that handler_a is accessible again
 		drop(handler_a);
-		
+
 		// drop context
 		drop(context);
 
